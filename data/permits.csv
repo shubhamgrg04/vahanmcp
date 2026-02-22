@@ -1,0 +1,217 @@
+state_code,state_name,year,count,growth_pct
+-1,All India,Till Today,26716624,
+-1,All India,2026:,741724,
+-1,All India,2025:,4793503,16.99%
+-1,All India,2024:,4097243,16.52%
+-1,All India,2023:,3516328,60.00%
+-1,All India,2022:,2197669,
+AN,Andaman & Nicobar Island,Till Today,26716624,
+AN,Andaman & Nicobar Island,2026:,741724,
+AN,Andaman & Nicobar Island,2025:,4793503,16.99%
+AN,Andaman & Nicobar Island,2024:,4097243,16.52%
+AN,Andaman & Nicobar Island,2023:,3516328,60.00%
+AN,Andaman & Nicobar Island,2022:,2197669,
+AP,Andhra Pradesh,Till Today,26716624,
+AP,Andhra Pradesh,2026:,741724,
+AP,Andhra Pradesh,2025:,4793503,16.99%
+AP,Andhra Pradesh,2024:,4097243,16.52%
+AP,Andhra Pradesh,2023:,3516328,60.00%
+AP,Andhra Pradesh,2022:,2197669,
+AR,Arunachal Pradesh,Till Today,26716624,
+AR,Arunachal Pradesh,2026:,741724,
+AR,Arunachal Pradesh,2025:,4793503,16.99%
+AR,Arunachal Pradesh,2024:,4097243,16.52%
+AR,Arunachal Pradesh,2023:,3516328,60.00%
+AR,Arunachal Pradesh,2022:,2197669,
+AS,Assam,Till Today,26716624,
+AS,Assam,2026:,741724,
+AS,Assam,2025:,4793503,16.99%
+AS,Assam,2024:,4097243,16.52%
+AS,Assam,2023:,3516328,60.00%
+AS,Assam,2022:,2197669,
+BR,Bihar,Till Today,26716624,
+BR,Bihar,2026:,741724,
+BR,Bihar,2025:,4793503,16.99%
+BR,Bihar,2024:,4097243,16.52%
+BR,Bihar,2023:,3516328,60.00%
+BR,Bihar,2022:,2197669,
+CG,Chhattisgarh,Till Today,26716624,
+CG,Chhattisgarh,2026:,741724,
+CG,Chhattisgarh,2025:,4793503,16.99%
+CG,Chhattisgarh,2024:,4097243,16.52%
+CG,Chhattisgarh,2023:,3516328,60.00%
+CG,Chhattisgarh,2022:,2197669,
+CH,Chandigarh,Till Today,26716624,
+CH,Chandigarh,2026:,741724,
+CH,Chandigarh,2025:,4793503,16.99%
+CH,Chandigarh,2024:,4097243,16.52%
+CH,Chandigarh,2023:,3516328,60.00%
+CH,Chandigarh,2022:,2197669,
+DD,UT of DNH and DD,Till Today,26716624,
+DD,UT of DNH and DD,2026:,741724,
+DD,UT of DNH and DD,2025:,4793503,16.99%
+DD,UT of DNH and DD,2024:,4097243,16.52%
+DD,UT of DNH and DD,2023:,3516328,60.00%
+DD,UT of DNH and DD,2022:,2197669,
+DL,Delhi,Till Today,26716624,
+DL,Delhi,2026:,741724,
+DL,Delhi,2025:,4793503,16.99%
+DL,Delhi,2024:,4097243,16.52%
+DL,Delhi,2023:,3516328,60.00%
+DL,Delhi,2022:,2197669,
+GA,Goa,Till Today,26716624,
+GA,Goa,2026:,741724,
+GA,Goa,2025:,4793503,16.99%
+GA,Goa,2024:,4097243,16.52%
+GA,Goa,2023:,3516328,60.00%
+GA,Goa,2022:,2197669,
+GJ,Gujarat,Till Today,26716624,
+GJ,Gujarat,2026:,741724,
+GJ,Gujarat,2025:,4793503,16.99%
+GJ,Gujarat,2024:,4097243,16.52%
+GJ,Gujarat,2023:,3516328,60.00%
+GJ,Gujarat,2022:,2197669,
+HP,Himachal Pradesh,Till Today,26716624,
+HP,Himachal Pradesh,2026:,741724,
+HP,Himachal Pradesh,2025:,4793503,16.99%
+HP,Himachal Pradesh,2024:,4097243,16.52%
+HP,Himachal Pradesh,2023:,3516328,60.00%
+HP,Himachal Pradesh,2022:,2197669,
+HR,Haryana,Till Today,26716624,
+HR,Haryana,2026:,741724,
+HR,Haryana,2025:,4793503,16.99%
+HR,Haryana,2024:,4097243,16.52%
+HR,Haryana,2023:,3516328,60.00%
+HR,Haryana,2022:,2197669,
+JH,Jharkhand,Till Today,26716624,
+JH,Jharkhand,2026:,741724,
+JH,Jharkhand,2025:,4793503,16.99%
+JH,Jharkhand,2024:,4097243,16.52%
+JH,Jharkhand,2023:,3516328,60.00%
+JH,Jharkhand,2022:,2197669,
+JK,Jammu and Kashmir,Till Today,26716624,
+JK,Jammu and Kashmir,2026:,741724,
+JK,Jammu and Kashmir,2025:,4793503,16.99%
+JK,Jammu and Kashmir,2024:,4097243,16.52%
+JK,Jammu and Kashmir,2023:,3516328,60.00%
+JK,Jammu and Kashmir,2022:,2197669,
+KA,Karnataka,Till Today,26716624,
+KA,Karnataka,2026:,741724,
+KA,Karnataka,2025:,4793503,16.99%
+KA,Karnataka,2024:,4097243,16.52%
+KA,Karnataka,2023:,3516328,60.00%
+KA,Karnataka,2022:,2197669,
+KL,Kerala,Till Today,26716624,
+KL,Kerala,2026:,741724,
+KL,Kerala,2025:,4793503,16.99%
+KL,Kerala,2024:,4097243,16.52%
+KL,Kerala,2023:,3516328,60.00%
+KL,Kerala,2022:,2197669,
+LA,Ladakh,Till Today,26716624,
+LA,Ladakh,2026:,741724,
+LA,Ladakh,2025:,4793503,16.99%
+LA,Ladakh,2024:,4097243,16.52%
+LA,Ladakh,2023:,3516328,60.00%
+LA,Ladakh,2022:,2197669,
+LD,Lakshadweep,Till Today,26716624,
+LD,Lakshadweep,2026:,741724,
+LD,Lakshadweep,2025:,4793503,16.99%
+LD,Lakshadweep,2024:,4097243,16.52%
+LD,Lakshadweep,2023:,3516328,60.00%
+LD,Lakshadweep,2022:,2197669,
+MH,Maharashtra,Till Today,26716624,
+MH,Maharashtra,2026:,741724,
+MH,Maharashtra,2025:,4793503,16.99%
+MH,Maharashtra,2024:,4097243,16.52%
+MH,Maharashtra,2023:,3516328,60.00%
+MH,Maharashtra,2022:,2197669,
+ML,Meghalaya,Till Today,26716624,
+ML,Meghalaya,2026:,741724,
+ML,Meghalaya,2025:,4793503,16.99%
+ML,Meghalaya,2024:,4097243,16.52%
+ML,Meghalaya,2023:,3516328,60.00%
+ML,Meghalaya,2022:,2197669,
+MN,Manipur,Till Today,26716624,
+MN,Manipur,2026:,741724,
+MN,Manipur,2025:,4793503,16.99%
+MN,Manipur,2024:,4097243,16.52%
+MN,Manipur,2023:,3516328,60.00%
+MN,Manipur,2022:,2197669,
+MP,Madhya Pradesh,Till Today,26716624,
+MP,Madhya Pradesh,2026:,741724,
+MP,Madhya Pradesh,2025:,4793503,16.99%
+MP,Madhya Pradesh,2024:,4097243,16.52%
+MP,Madhya Pradesh,2023:,3516328,60.00%
+MP,Madhya Pradesh,2022:,2197669,
+MZ,Mizoram,Till Today,26716624,
+MZ,Mizoram,2026:,741724,
+MZ,Mizoram,2025:,4793503,16.99%
+MZ,Mizoram,2024:,4097243,16.52%
+MZ,Mizoram,2023:,3516328,60.00%
+MZ,Mizoram,2022:,2197669,
+NL,Nagaland,Till Today,26716624,
+NL,Nagaland,2026:,741724,
+NL,Nagaland,2025:,4793503,16.99%
+NL,Nagaland,2024:,4097243,16.52%
+NL,Nagaland,2023:,3516328,60.00%
+NL,Nagaland,2022:,2197669,
+OR,Odisha,Till Today,26716624,
+OR,Odisha,2026:,741724,
+OR,Odisha,2025:,4793503,16.99%
+OR,Odisha,2024:,4097243,16.52%
+OR,Odisha,2023:,3516328,60.00%
+OR,Odisha,2022:,2197669,
+PB,Punjab,Till Today,26716624,
+PB,Punjab,2026:,741724,
+PB,Punjab,2025:,4793503,16.99%
+PB,Punjab,2024:,4097243,16.52%
+PB,Punjab,2023:,3516328,60.00%
+PB,Punjab,2022:,2197669,
+PY,Puducherry,Till Today,26716624,
+PY,Puducherry,2026:,741724,
+PY,Puducherry,2025:,4793503,16.99%
+PY,Puducherry,2024:,4097243,16.52%
+PY,Puducherry,2023:,3516328,60.00%
+PY,Puducherry,2022:,2197669,
+RJ,Rajasthan,Till Today,26716624,
+RJ,Rajasthan,2026:,741724,
+RJ,Rajasthan,2025:,4793503,16.99%
+RJ,Rajasthan,2024:,4097243,16.52%
+RJ,Rajasthan,2023:,3516328,60.00%
+RJ,Rajasthan,2022:,2197669,
+SK,Sikkim,Till Today,26716624,
+SK,Sikkim,2026:,741724,
+SK,Sikkim,2025:,4793503,16.99%
+SK,Sikkim,2024:,4097243,16.52%
+SK,Sikkim,2023:,3516328,60.00%
+SK,Sikkim,2022:,2197669,
+TN,Tamil Nadu,Till Today,26716624,
+TN,Tamil Nadu,2026:,741724,
+TN,Tamil Nadu,2025:,4793503,16.99%
+TN,Tamil Nadu,2024:,4097243,16.52%
+TN,Tamil Nadu,2023:,3516328,60.00%
+TN,Tamil Nadu,2022:,2197669,
+TR,Tripura,Till Today,26716624,
+TR,Tripura,2026:,741724,
+TR,Tripura,2025:,4793503,16.99%
+TR,Tripura,2024:,4097243,16.52%
+TR,Tripura,2023:,3516328,60.00%
+TR,Tripura,2022:,2197669,
+UK,Uttarakhand,Till Today,26716624,
+UK,Uttarakhand,2026:,741724,
+UK,Uttarakhand,2025:,4793503,16.99%
+UK,Uttarakhand,2024:,4097243,16.52%
+UK,Uttarakhand,2023:,3516328,60.00%
+UK,Uttarakhand,2022:,2197669,
+UP,Uttar Pradesh,Till Today,26716624,
+UP,Uttar Pradesh,2026:,741724,
+UP,Uttar Pradesh,2025:,4793503,16.99%
+UP,Uttar Pradesh,2024:,4097243,16.52%
+UP,Uttar Pradesh,2023:,3516328,60.00%
+UP,Uttar Pradesh,2022:,2197669,
+WB,West Bengal,Till Today,26716624,
+WB,West Bengal,2026:,741724,
+WB,West Bengal,2025:,4793503,16.99%
+WB,West Bengal,2024:,4097243,16.52%
+WB,West Bengal,2023:,3516328,60.00%
+WB,West Bengal,2022:,2197669,
