@@ -40,8 +40,10 @@ from playwright.sync_api import (
 BASE_URL = "https://vahan.parivahan.gov.in/vahan4dashboard/vahan/dashboardview.xhtml"
 OUT_DIR  = Path("data")
 OUT_DIR.mkdir(exist_ok=True)
+SNAP_DIR = OUT_DIR / "snapshots"
+SNAP_DIR.mkdir(exist_ok=True)
 
-PAGE_LOAD_TIMEOUT = 180_000
+PAGE_LOAD_TIMEOUT = 90_000
 AJAX_TIMEOUT      = 30_000
 
 STATES = [
@@ -97,14 +99,19 @@ VALID_X_AXES = [
 # ── PrimeFaces helpers ──────────────────────────────────────────────────────
 
 def pf_change(page, comp_id: str, value: str, _update_str: str = ""):
-    """Set a PrimeFaces SelectOneMenu value and fire its inline onchange."""
+    """Set a PrimeFaces SelectOneMenu value natively."""
     try:
         page.evaluate("""({ selId, val }) => {
             const sel = document.getElementById(selId + '_input');
             if (!sel) return;
             sel.value = val;
             const handler = sel.getAttribute('onchange');
-            if (handler) { try { eval(handler); } catch(e) {} }
+            if (handler) {
+                let script = document.createElement('script');
+                script.textContent = `(function() { let el = document.getElementById('${selId}_input'); let f = new Function(el.getAttribute('onchange')); f.call(el); })();`;
+                document.body.appendChild(script);
+                script.remove();
+            }
         }""", {"selId": comp_id, "val": value})
     except PlaywrightError as e:
         if "context was destroyed" not in str(e) and "Execution context" not in str(e):
@@ -135,14 +142,8 @@ def set_year_checkboxes(page, years: list):
 def click_refresh(page):
     """Click refresh and wait for table to load."""
     page.evaluate("""() => {
-        PrimeFaces.ab({
-            s: "j_idt67",
-            f: "masterLayout_formlogin",
-            p: "@form",
-            u: "VhCatg norms fuel VhClass combTablePnl groupingTable msg vhCatgPnl",
-            onst: function(cfg){ PF('blockpnlCombTable').show(); },
-            onco: function(xhr,status,args,data){ PF('blockpnlCombTable').hide(); }
-        });
+        let btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent && b.textContent.includes('Refresh'));
+        if (btn) btn.click();
     }""")
     time.sleep(0.3)
     try:
@@ -151,13 +152,47 @@ def click_refresh(page):
         time.sleep(2)
 
 
+
 def switch_to_tabular_summary(page):
     """Switch the main view to Tabular Summary mode."""
-    pf_change(page, "j_idt17", "R",
-              "v4chart comparison dashboardContentsPanel mainpagepnl calendaryear "
-              "yearWiseRegnDataTable yearWiseTransDataTable yearWiseRevDataTable yearWisePermitDataTable")
-    time.sleep(1)
+    page.evaluate("""() => {
+        let radio = document.querySelector('input[type="radio"][value="R"]');
+        if (radio) {
+            radio.checked = true;
+            let handler = radio.getAttribute('onchange');
+            if (handler) {
+                let f = new Function(handler);
+                f.call(radio);
+            }
+        }
+    }""")
+    time.sleep(2)
 
+
+
+def set_state(page, state_code: str):
+    """Change the State dropdown robustly."""
+    try:
+        page.evaluate("""(code) => {
+            let stateSelect = document.querySelector('select[onchange*="selectedRto yaxisVar"]');
+            if (stateSelect) {
+                stateSelect.value = code;
+                let handler = stateSelect.getAttribute('onchange');
+                if (handler) {
+                    let script = document.createElement('script');
+                    script.textContent = `(function() { let el = document.querySelector('select[onchange*="selectedRto yaxisVar"]'); let f = new Function(el.getAttribute('onchange')); f.call(el); })();`;
+                    document.body.appendChild(script);
+                    script.remove();
+                }
+            }
+        }""", state_code)
+    except PlaywrightError as e:
+        pass
+    time.sleep(0.3)
+    try:
+        page.wait_for_load_state("networkidle", timeout=AJAX_TIMEOUT)
+    except PlaywrightTimeout:
+        time.sleep(1)
 
 def recover_if_navigated(page, state_code: str):
     """If page navigated away, switch back to Tabular Summary."""
@@ -171,20 +206,56 @@ def recover_if_navigated(page, state_code: str):
         page.goto(BASE_URL, wait_until="networkidle", timeout=PAGE_LOAD_TIMEOUT)
         time.sleep(1)
     switch_to_tabular_summary(page)
-    pf_change(page, "j_idt37", state_code, "selectedRto yaxisVar")
+    set_state(page, state_code)
     return True
+
+
+def verify_primefaces(page) -> bool:
+    """Check if PrimeFaces JS object exists."""
+    try:
+        return page.evaluate("typeof PrimeFaces !== 'undefined'")
+    except Exception:
+        return False
+
+
+def save_snapshot(page, prefix: str):
+    """Save a screenshot and HTML snapshot for debugging."""
+    ts = int(time.time())
+    png = SNAP_DIR / f"{prefix}_{ts}.png"
+    html = SNAP_DIR / f"{prefix}_{ts}.html"
+    try:
+        page.screenshot(path=str(png))
+        with open(html, "w", encoding="utf-8") as f:
+            f.write(page.content())
+        print(f"    [snapshot] Saved to {png.name} & {html.name}")
+    except Exception as e:
+        print(f"    [snapshot error] {e}")
 
 
 def reinit_session(page, state_code: str):
     """Full page reload to reset JSF viewstate."""
     print("    [reinit] Full page reload...")
-    try:
-        page.goto(BASE_URL, wait_until="networkidle", timeout=PAGE_LOAD_TIMEOUT)
-    except PlaywrightTimeout:
-        pass
-    time.sleep(1)
+    
+    max_reloads = 3
+    for attempt in range(max_reloads):
+        try:
+            page.goto(BASE_URL, wait_until="networkidle", timeout=PAGE_LOAD_TIMEOUT)
+        except PlaywrightTimeout:
+            pass
+            
+        time.sleep(1)
+        
+        if verify_primefaces(page):
+            break
+            
+        print(f"    [warn] PrimeFaces not loaded after reload attempt {attempt+1}/{max_reloads}")
+        if attempt == max_reloads - 1:
+            save_snapshot(page, "reinit_failed")
+            raise Exception("Failed to load PrimeFaces during reinit")
+        time.sleep(5) # wait before retrying reload
+
     switch_to_tabular_summary(page)
-    pf_change(page, "j_idt37", state_code, "selectedRto yaxisVar")
+    set_state(page, state_code)
 
 
 # ── Download helpers ────────────────────────────────────────────────────────
@@ -198,6 +269,10 @@ def trigger_xlsx_download(page) -> str | None:
     except PlaywrightTimeout:
         pass
 
+    with open(SNAP_DIR / "debug_download.html", "w") as f:
+        f.write(page.content())
+    page.screenshot(path=str(SNAP_DIR / "debug_download.png"))
+
     tmp_dir = tempfile.mkdtemp(prefix="vahan_dl_")
     try:
         with page.expect_download(timeout=180_000) as download_info:
@@ -206,6 +281,11 @@ def trigger_xlsx_download(page) -> str | None:
                 if (btn) { btn.click(); return; }
                 btn = document.getElementById('groupingTable:xls');
                 if (btn) btn.click();
+                
+                // fallback 
+                let btns = Array.from(document.querySelectorAll('button, a'));
+                let excelBtn = btns.find(b => b.textContent && b.textContent.includes('Excel'));
+                if (excelBtn) { excelBtn.click(); }
             }""")
         download = download_info.value
         save_path = os.path.join(tmp_dir, download.suggested_filename or "export.xlsx")
@@ -271,7 +351,7 @@ def scrape_crosstab(page, yaxis: str, xaxis: str, states=None, years=None) -> li
     done = 0
 
     for state_code, state_name in states:
-        pf_change(page, "j_idt37", state_code, "selectedRto yaxisVar")
+        set_state(page, state_code)
 
         for year in years:
             done += 1
@@ -293,6 +373,8 @@ def scrape_crosstab(page, yaxis: str, xaxis: str, states=None, years=None) -> li
                     # Select year
                     set_year_checkboxes(page, [year])
 
+                    save_snapshot(page, "before_refresh")
+                    
                     # Refresh table
                     click_refresh(page)
                     time.sleep(1)
@@ -310,11 +392,11 @@ def scrape_crosstab(page, yaxis: str, xaxis: str, states=None, years=None) -> li
                     df = parse_xlsx(filepath, yaxis)
 
                     # Cleanup temp file
-                    try:
-                        os.unlink(filepath)
-                        os.rmdir(os.path.dirname(filepath))
-                    except Exception:
-                        pass
+                    # try:
+                    #     os.unlink(filepath)
+                    #     os.rmdir(os.path.dirname(filepath))
+                    # except Exception:
+                    #     pass
 
                     if df.empty:
                         print(f"    [warn] empty XLSX")
@@ -366,7 +448,7 @@ def scrape_crosstab(page, yaxis: str, xaxis: str, states=None, years=None) -> li
                     except Exception:
                         pass
                     recover_if_navigated(page, state_code)
-                    pf_change(page, "j_idt37", state_code, "selectedRto yaxisVar")
+                    set_state(page, state_code)
 
     return all_rows
 
@@ -438,17 +520,32 @@ Examples:
         page = context.new_page()
 
         print("Loading dashboard...")
-        try:
-            page.goto(BASE_URL, wait_until="networkidle", timeout=PAGE_LOAD_TIMEOUT)
-        except PlaywrightTimeout:
-            # networkidle can be flaky; check if page actually loaded
+        max_reloads = 3
+        dashboard_loaded = False
+        for attempt in range(max_reloads):
             try:
-                page.wait_for_selector("#j_idt17_input", timeout=10_000)
+                page.goto(BASE_URL, wait_until="networkidle", timeout=PAGE_LOAD_TIMEOUT)
             except PlaywrightTimeout:
-                print("ERROR: Could not load Vahan dashboard (site may be down)")
-                browser.close()
-                return
-        time.sleep(2)
+                # networkidle can be flaky; check if page actually loaded
+                try:
+                    page.wait_for_selector("#j_idt17_input", timeout=10_000)
+                except PlaywrightTimeout:
+                    pass
+            
+            time.sleep(2)
+            if verify_primefaces(page):
+                dashboard_loaded = True
+                break
+                
+            print(f"    [warn] PrimeFaces not loaded on initial load attempt {attempt+1}/{max_reloads}")
+            if attempt < max_reloads - 1:
+               time.sleep(5)
+               
+        if not dashboard_loaded:
+            print("ERROR: Could not load Vahan dashboard or PrimeFaces (site may be down)")
+            save_snapshot(page, "init_failed")
+            browser.close()
+            return
 
         switch_to_tabular_summary(page)
 

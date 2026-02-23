@@ -20,6 +20,7 @@ Scrape India's national vehicle registration database ([VAHAN Dashboard](https:/
    - [scraper.py — dashboard metrics](#scraperpy--dashboard-metrics)
    - [scrape_vehicle_types.py — fuel & norms](#scrape_vehicle_typespy--fuel--norms)
    - [scrape_makers.py — brand registrations](#scrape_makerspy--brand-registrations)
+   - [scrape_crosstab.py — generic tabular combinations](#scrape_crosstabpy--generic-tabular-combinations)
 3. [MCP Server](#3-mcp-server)
    - [stdio transport (local)](#stdio-transport-local)
    - [HTTP transport (web)](#http-transport-web)
@@ -166,6 +167,41 @@ Scrapes maker/manufacturer-wise vehicle registration counts via XLSX download fr
 | MAHINDRA & MAHINDRA LIMITED | 91,361 |
 | HYUNDAI MOTOR INDIA LTD | 66,781 |
 | INDIA YAMAHA MOTOR PVT LTD | 64,549 |
+
+---
+
+### `scrape_crosstab.py` — generic tabular combinations
+
+A generalized scraper that can download any Y-axis × X-axis combination from the VAHAN dashboard's Tabular Summary view.
+
+```bash
+# Maker × Fuel (All India, years 2024-2025)
+.venv/bin/python3 scrape_crosstab.py --yaxis Maker --xaxis Fuel --all-india-only --years 2025 2024
+
+# Fuel × Calendar Year (all states)
+.venv/bin/python3 scrape_crosstab.py --yaxis Fuel --xaxis "Calendar Year" --years 2025
+
+# State × Fuel
+.venv/bin/python3 scrape_crosstab.py --yaxis State --xaxis Fuel --all-india-only --years 2025
+
+# Maker × Norms across 3 years
+.venv/bin/python3 scrape_crosstab.py --yaxis Maker --xaxis Norms --years 2025 2024 2023
+```
+
+| Flag | Description |
+|---|---|
+| `--yaxis` | **Required.** Y-axis (rows). Valid options: `Vehicle Category`, `Vehicle Class`, `Norms`, `Fuel`, `Maker`, `State`. |
+| `--xaxis` | **Required.** X-axis (columns). Valid options: `Vehicle Category`, `Norms`, `Fuel`, `Vehicle Category Group`, `Financial Year`, `Calendar Year`, `Month Wise`. |
+| `--all-india-only` | Only scrape All India totals, skipping individual states. |
+| `--years` | Space-separated list of years to scrape (default: `2025 2024 2023`). |
+
+**Output files:**
+
+The script generates a CSV named after the provided Y-axis and X-axis.
+
+| File | Contents |
+|---|---|
+| `data/<yaxis>_by_<xaxis>.csv` | Cross-tabbed counts (e.g. `data/maker_by_fuel.csv`) |
 
 ---
 
