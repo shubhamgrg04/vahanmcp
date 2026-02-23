@@ -98,26 +98,45 @@ VALID_X_AXES = [
 
 # ── PrimeFaces helpers ──────────────────────────────────────────────────────
 
-def pf_change(page, comp_id: str, value: str, _update_str: str = ""):
-    """Set a PrimeFaces SelectOneMenu value natively."""
+def pf_change(page, comp_id, value, update_ids=None):
+    """Set a PrimeFaces dropdown value and trigger its onchange robustly."""
     try:
         page.evaluate("""({ selId, val }) => {
-            const sel = document.getElementById(selId + '_input');
+            let sel = document.getElementById(selId + '_input');
             if (!sel) return;
-            sel.value = val;
-            const handler = sel.getAttribute('onchange');
-            if (handler) {
-                let script = document.createElement('script');
-                script.textContent = `(function() { let el = document.getElementById('${selId}_input'); let f = new Function(el.getAttribute('onchange')); f.call(el); })();`;
-                document.body.appendChild(script);
-                script.remove();
+            
+            // 1. Try PrimeFaces widget API if available
+            // Note: The widget ID might be the same as the component ID or slightly different.
+            // For SelectOneMenu, it's often the ID.
+            let widget = (window.PrimeFaces && PrimeFaces.widgets) ? 
+                         (PrimeFaces.widgets[selId] || Object.values(PrimeFaces.widgets).find(w => w.id === selId)) : null;
+            
+            if (widget && typeof widget.selectValue === 'function') {
+                widget.selectValue(val);
+            } else {
+                // 2. Fallback to manual value setting and event triggering
+                sel.value = val;
+                
+                // Trigger change event
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                
+                // Fallback: manually call the onchange handler if it exists
+                let handler = sel.getAttribute('onchange');
+                if (handler) {
+                    try {
+                        let f = new Function(handler);
+                        f.call(sel);
+                    } catch(e) {}
+                }
             }
         }""", {"selId": comp_id, "val": value})
     except PlaywrightError as e:
         if "context was destroyed" not in str(e) and "Execution context" not in str(e):
             raise
-    time.sleep(0.3)
+    
+    time.sleep(0.5)
     try:
+        # Wait for AJAX update if we have hints about what updates
         page.wait_for_load_state("networkidle", timeout=AJAX_TIMEOUT)
     except PlaywrightTimeout:
         time.sleep(1)
@@ -130,22 +149,72 @@ def configure_axes(page, yaxis: str, xaxis: str):
     time.sleep(0.3)
 
 
-def set_year_checkboxes(page, years: list):
-    """Check the given years in the yearList checkbox group; uncheck the rest."""
-    page.evaluate("""(years) => {
+def set_year(page, year: str):
+    """Set the year using either checkboxes (Tabular) or dropdown (Month Wise)."""
+    # 1. Set the year in the DOM/Widget
+    page.evaluate("""(yr) => {
+        // Dropdown (e.g. Month Wise)
+        let sel = document.getElementById('selectedYear_input');
+        if (sel) {
+            sel.value = yr;
+            // Try PrimeFaces widget first
+            if (window.PrimeFaces && PrimeFaces.widgets['selectedYear']) {
+                PrimeFaces.widgets['selectedYear'].selectValue(yr);
+            } else {
+                let handler = sel.getAttribute('onchange');
+                if (handler) {
+                    let f = new Function(handler);
+                    f.call(sel);
+                }
+            }
+        }
+        // Checkboxes (e.g. Maker/Fuel/State axes)
         document.querySelectorAll('input[name="yearList"]').forEach(cb => {
-            cb.checked = years.includes(cb.value);
+            cb.checked = (cb.value === yr);
+            // Fire change event to update PrimeFaces state
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
         });
-    }""", years)
+    }""", str(year))
+    
+    time.sleep(1)
+    try:
+        page.wait_for_load_state("networkidle", timeout=AJAX_TIMEOUT)
+    except PlaywrightTimeout:
+        time.sleep(2)
+
+    # 2. Verification: Check if the UI reflects the selected year
+    # This is crucial because stale data downloads are the root cause.
+    ui_year = page.evaluate("""() => {
+        let label = document.getElementById('selectedYear_label');
+        return label ? label.textContent.trim() : null;
+    }""")
+    if ui_year and ui_year != str(year):
+        print(f"    [WARN] UI Year ({ui_year}) does not match requested year ({year}). Retrying selection...")
+        # One simple retry with a click
+        page.click("#selectedYear_label", timeout=5000)
+        page.click(f"li[data-label='{year}']", timeout=5000)
+        time.sleep(1)
+        page.wait_for_load_state("networkidle", timeout=AJAX_TIMEOUT)
 
 
 def click_refresh(page):
     """Click refresh and wait for table to load."""
+    # Try to find the visible Refresh button. j_idt73 is the usual one for Tabular Summary.
     page.evaluate("""() => {
-        let btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent && b.textContent.includes('Refresh'));
-        if (btn) btn.click();
+        let btns = Array.from(document.querySelectorAll('button'));
+        let refreshBtn = btns.find(b => 
+            b.textContent && b.textContent.includes('Refresh') && 
+            b.offsetWidth > 0 && b.offsetHeight > 0
+        );
+        if (refreshBtn) {
+            refreshBtn.click();
+        } else {
+            // Fallback to ID if visibility check fails
+            let btn = document.getElementById('j_idt73');
+            if (btn) btn.click();
+        }
     }""")
-    time.sleep(0.3)
+    time.sleep(0.5)
     try:
         page.wait_for_load_state("networkidle", timeout=AJAX_TIMEOUT)
     except PlaywrightTimeout:
@@ -156,6 +225,18 @@ def click_refresh(page):
 def switch_to_tabular_summary(page):
     """Switch the main view to Tabular Summary mode."""
     page.evaluate("""() => {
+        // Try dropdown first (SelectOneMenu)
+        let sel = document.querySelector('select[id*="j_idt17_input"]');
+        if (sel) {
+            sel.value = 'R';
+            let handler = sel.getAttribute('onchange');
+            if (handler) {
+                let f = new Function(handler);
+                f.call(sel);
+            }
+            return;
+        }
+        // Fallback to radio button
         let radio = document.querySelector('input[type="radio"][value="R"]');
         if (radio) {
             radio.checked = true;
@@ -166,7 +247,11 @@ def switch_to_tabular_summary(page):
             }
         }
     }""")
-    time.sleep(2)
+    time.sleep(3)
+    try:
+        page.wait_for_load_state("networkidle", timeout=AJAX_TIMEOUT)
+    except PlaywrightTimeout:
+        time.sleep(2)
 
 
 
@@ -300,7 +385,7 @@ def trigger_xlsx_download(page) -> str | None:
 
 
 def parse_xlsx(filepath: str, yaxis: str) -> pd.DataFrame:
-    """Parse a Vahan XLSX export file into a clean DataFrame."""
+    """Parse a Vahan XLSX export file into a clean DataFrame, handling multi-row headers."""
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -309,25 +394,73 @@ def parse_xlsx(filepath: str, yaxis: str) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
 
-    # Find header row — contains "S No" or the Y-axis name
-    header_idx = 0
-    for i in range(min(5, len(df))):
-        row_vals = [str(v).strip() for v in df.iloc[i].values if pd.notna(v)]
-        if any("S No" in v or yaxis in v for v in row_vals):
+    # 1. Find the main header row (containing at least two expected markers like S No, Maker, Total)
+    header_idx = None
+    markers = {"S NO", "S.NO", "MAKER", "STATE", "FUEL", "TOTAL", "VEHICLE CLASS", "NORMS", "VEHICLE CLASS", "VEHICLE CATEGORY"}
+    for i in range(min(12, len(df))):
+        row_vals = {str(v).strip().upper() for v in df.iloc[i].values if pd.notna(v)}
+        if len(row_vals.intersection(markers)) >= 2:
             header_idx = i
             break
 
-    # Build DataFrame with proper headers
-    headers = [str(v).strip() if pd.notna(v) else f"col_{i}"
-               for i, v in enumerate(df.iloc[header_idx].values)]
-    data = df.iloc[header_idx + 1:].copy()
+    if header_idx is None:
+        header_idx = 0
+
+    # 2. Check if there is a sub-header row (up to 3 rows down, skipping empty rows)
+    sub_header_idx = None
+    for j in range(header_idx + 1, min(header_idx + 4, len(df))):
+        v0 = df.iloc[j, 0]
+        # Skip purely empty rows
+        row_vals = [str(v).strip() for v in df.iloc[j].values if pd.notna(v) and str(v).strip() != ""]
+        if not row_vals:
+            continue
+            
+        # If the first column is empty but there are other values, it's a sub-header
+        if pd.isna(v0) or str(v0).strip() == "":
+            sub_header_idx = j
+            break
+        elif str(v0).strip().isdigit():
+            # Found a data row, so no sub-header exists
+            break
+
+    # 3. Merge headers
+    h_main = df.iloc[header_idx].values
+    if sub_header_idx is not None:
+        h_sub = df.iloc[sub_header_idx].values
+        headers = []
+        for m, s in zip(h_main, h_sub):
+            main_str = str(m).strip() if pd.notna(m) else ""
+            sub_str = str(s).strip() if pd.notna(s) else ""
+            
+            # Prefer the sub-header if it exists, otherwise use the main header
+            if sub_str and sub_str.upper() != "NAN":
+                headers.append(sub_str)
+            else:
+                headers.append(main_str)
+        data_start = sub_header_idx + 1
+    else:
+        headers = [str(v).strip() if pd.notna(v) else f"col_{i}" for i, v in enumerate(h_main)]
+        data_start = header_idx + 1
+
+    # Clean headers
+    headers = [" ".join(h.split()) for h in headers]
+    # print(f"      [DEBUG] Header Row: {header_idx}, Sub: {sub_header_idx}")
+    # print(f"      [DEBUG] Headers: {headers}")
+    
+    # 4. Build data part
+    data = df.iloc[data_start:].copy()
     data.columns = headers[:len(data.columns)]
     data = data.reset_index(drop=True)
 
-    # Remove empty/total rows
-    y_col = yaxis
-    if y_col in data.columns:
-        data = data[data[y_col].notna() & (data[y_col].astype(str).str.strip() != "")]
+    # 5. Filter out empty/total/invalid rows
+    if headers:
+        # First non-SNo column is usually the Y-axis label
+        y_cols = [h for h in headers if h and h.upper() != "S NO"]
+        if y_cols:
+            y_col = y_cols[0]
+            data = data[data[y_col].notna() & (data[y_col].astype(str).str.strip() != "")]
+            # Remove the grand "TOTAL" row
+            data = data[data[y_col].astype(str).str.upper() != "TOTAL"]
 
     return data
 
@@ -359,23 +492,35 @@ def scrape_crosstab(page, yaxis: str, xaxis: str, states=None, years=None) -> li
 
             for attempt in range(3):
                 try:
-                    # Set axes
+                    # 1. Set axes
                     configure_axes(page, yaxis, xaxis)
-
-                    # Set vehicle group (needed to generate table)
-                    pf_change(page, "vchgroupTable:selectCatgGrp", DEFAULT_VH_GROUP,
-                              "vchgroupTable VhCatg norms fuel VhClass")
+                    
+                    # 2. Refresh after axis change to switch table type
+                    click_refresh(page)
                     recover_if_navigated(page, state_code)
 
-                    # Re-apply axes after vhGroup change
-                    configure_axes(page, yaxis, xaxis)
-
-                    # Select year
-                    set_year_checkboxes(page, [year])
-
-                    save_snapshot(page, "before_refresh")
+                    # 3. Detect active table and handle sub-selectors
+                    is_vch_table = page.evaluate("!!document.getElementById('vchgroupTable')")
                     
-                    # Refresh table
+                    if is_vch_table:
+                        # Set vehicle group (needed for Category Group axis)
+                        pf_change(page, "vchgroupTable:selectCatgGrp", DEFAULT_VH_GROUP,
+                                  "vchgroupTable VhCatg norms fuel VhClass")
+                    else:
+                        # For other axes like Month Wise, check if there's a different sub-selector
+                        # groupingTable:selectMonth is common for Month Wise
+                        has_month_sel = page.evaluate("!!document.getElementById('groupingTable:selectMonth')")
+                        if has_month_sel:
+                            # Select 'All' months or a specific group if needed. 
+                            pass
+
+                    recover_if_navigated(page, state_code)
+
+                    # 4. Select year
+                    set_year(page, year)
+
+                    # 5. Final Refresh to fetch data
+                    save_snapshot(page, "before_refresh")
                     click_refresh(page)
                     time.sleep(1)
 
