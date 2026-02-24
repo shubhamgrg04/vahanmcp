@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: vahan-mcp
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python mcp_server.py --transport http --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0

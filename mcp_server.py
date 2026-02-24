@@ -20,6 +20,13 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Resource, TextContent, Tool
 import mcp.types as types
 
+# Optional Turso support
+try:
+    import libsql
+    HAS_LIBSQL = True
+except ImportError:
+    HAS_LIBSQL = False
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -138,11 +145,20 @@ def _ingest_lookup(con: sqlite3.Connection, table: str, filename: str):
         except Exception as e:
             print(f"Error ingesting {filename}: {e}")
 
-def open_db() -> sqlite3.Connection:
-    """Connect to DB and ensure data is synced."""
+def open_db():
+    """Connect to DB (Local SQLite or Turso) and ensure data is synced."""
     global DB
-    con = sqlite3.connect(DB_PATH, check_same_thread=False)
-    con.row_factory = sqlite3.Row
+    url   = os.getenv("TURSO_DATABASE_URL")
+    token = os.getenv("TURSO_AUTH_TOKEN")
+    
+    if url and HAS_LIBSQL:
+        print(f"Connecting to Turso: {url}")
+        con = libsql.connect(url, auth_token=token)
+    else:
+        print(f"Connecting to local SQLite: {DB_PATH}")
+        con = sqlite3.connect(DB_PATH, check_same_thread=False)
+        con.row_factory = sqlite3.Row
+        
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA foreign_keys=ON")
     ingest(con)
