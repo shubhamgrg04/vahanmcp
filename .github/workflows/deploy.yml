@@ -12,7 +12,11 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.DO_HOST }}
-          username: shubham # Replace with your droplet username
+          username: root
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
-            bash /home/shubham/vahandata/scripts/deploy.sh
+            if [ ! -d "/root/vahandata" ]; then
+              git clone https://github.com/shubhamgrg04/vahanmcp.git /root/vahandata
+            fi
+            chmod +x /root/vahandata/scripts/deploy.sh
+            /root/vahandata/scripts/deploy.sh
