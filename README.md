@@ -3,13 +3,10 @@
 Scrape India's national vehicle registration database ([VAHAN Dashboard](https://vahan.parivahan.gov.in/vahan4dashboard/)) and serve it as a Model Context Protocol (MCP) server — queryable by Claude and any MCP-compatible client.
 
 **Data coverage**
-- 35 states / union territories
-- 1,551 Regional Transport Offices (RTOs)
-- Year-wise registrations, transactions, revenue, and permits (All India)
-- Vehicle class × fuel type breakdown (273,852 rows)
-- Vehicle class × emission norms breakdown (205,801 rows)
-- Maker/brand-wise registration counts (~1,457 manufacturers per year)
-- Historical data from 1970 to present
+- 36 states / union territories (including All India)
+- Consolidated registration data by **Fuel**, **Maker**, **Vehicle Class**, **Category**, and **Norms**
+- Month-wise and state-wise granularity
+- Data available for years 2024–2026 (customizable via scraper)
 
 ---
 
@@ -17,16 +14,8 @@ Scrape India's national vehicle registration database ([VAHAN Dashboard](https:/
 
 1. [Setup](#1-setup)
 2. [Scraping](#2-scraping)
-   - [scraper.py — dashboard metrics](#scraperpy--dashboard-metrics)
-   - [scrape_vehicle_types.py — fuel & norms](#scrape_vehicle_typespy--fuel--norms)
-   - [scrape_makers.py — brand registrations](#scrape_makerspy--brand-registrations)
-   - [scrape_crosstab.py — generic tabular combinations](#scrape_crosstabpy--generic-tabular-combinations)
 3. [MCP Server](#3-mcp-server)
-   - [stdio transport (local)](#stdio-transport-local)
-   - [HTTP transport (web)](#http-transport-web)
 4. [Hosting with Cloudflared](#4-hosting-with-cloudflared)
-   - [Quick tunnel (no account)](#quick-tunnel-no-account)
-   - [Named tunnel (stable URL)](#named-tunnel-stable-url)
 5. [Connecting Claude Desktop](#5-connecting-claude-desktop)
 6. [MCP Tools Reference](#6-mcp-tools-reference)
 7. [MCP Resources Reference](#7-mcp-resources-reference)
@@ -56,153 +45,36 @@ python3 -m venv .venv
 ```
 
 ---
-
 ## 2. Scraping
 
-Run the scrapers before starting the MCP server. Scraped data is written to `data/` as CSV files, which the server ingests automatically into `db/vahan.db` on first start.
+The project uses a unified Playwright-based scraper to collect data from the [VAHAN Dashboard](https://vahan.parivahan.gov.in/vahan4dashboard/).
 
-### `scraper.py` — dashboard metrics
+### `vahan_scraper.py` — Multi-axis Scraper
 
-Scrapes year-wise registrations, transactions, revenue, permits, and the RTO list.
-
-```bash
-# Quick run — state-level data only (~5 min)
-.venv/bin/python3 scraper.py --skip-rto
-
-# Full run — includes per-RTO year-wise data (~30–60 min)
-.venv/bin/python3 scraper.py
-```
-
-| Flag | Description |
-|---|---|
-| `--skip-rto` | Skip per-RTO scraping (~1,400 AJAX calls). Produces all state-level CSVs only. |
-
-**Output files:**
-
-| File | Contents |
-|---|---|
-| `data/registrations.csv` | Year-wise registrations per state |
-| `data/transactions.csv` | Year-wise transactions per state |
-| `data/revenue.csv` | Year-wise revenue per state |
-| `data/permits.csv` | Year-wise permits per state |
-| `data/all_metrics.csv` | All 4 metrics combined |
-| `data/states.csv` | 35 state codes and names |
-| `data/rto_list.csv` | 1,551 RTOs with state codes |
-| `data/summary_stats.csv` | Top-level VAHAN dashboard stats |
-| `data/rto_metrics.csv` | Per-RTO year-wise data *(full run only)* |
-
----
-
-### `scrape_vehicle_types.py` — fuel & norms
-
-Scrapes vehicle class breakdowns by fuel type and emission norms across all states.
+This script handles navigation, dropdown selections, and automatic conversion of XLSX exports into long-format CSVs. It supports iterating through all Indian states for a given Y-axis variable and year.
 
 ```bash
-# Full scrape — all states, fuel + norms (~25 min)
-.venv/bin/python3 scrape_vehicle_types.py
+# Basic usage — defaults to All States, Vehicle Class, 2025
+.venv/bin/python scraping/vahan_scraper.py
 
-# All India totals only — faster (~10 min)
-.venv/bin/python3 scrape_vehicle_types.py --all-india-only
+# Specify specific states and years
+.venv/bin/python scraping/vahan_scraper.py --state "DELHI" "MAHARASHTRA" --year "2024"
 
-# Skip individual sections
-.venv/bin/python3 scrape_vehicle_types.py --skip-fuel
-.venv/bin/python3 scrape_vehicle_types.py --skip-norms
-.venv/bin/python3 scrape_vehicle_types.py --skip-year
+# Scrape Multiple Y-axis variables
+.venv/bin/python scraping/vahan_scraper.py --yaxis "Vehicle Class" "Maker" "Fuel" "Vehicle Category" "Norms" "State" --year "2026"
 ```
 
-| Flag | Description |
-|---|---|
-| `--all-india-only` | Only scrape All India totals, skipping all 35 individual states. Faster. |
-| `--skip-fuel` | Skip the vehicle class × fuel type breakdown. |
-| `--skip-norms` | Skip the vehicle class × emission norms breakdown. |
-| `--skip-year` | Skip the vehicle class × year breakdown. |
+| Flag | Default | Description |
+|---|---|---|
+| `--state` | `ALL` | List of states to scrape. If `ALL` or omitted, it fetches all ~36 available states. |
+| `--yaxis` | `["Vehicle Class"]` | One or more Y-Axis variables to scrape (e.g., `Fuel`, `Maker`, `Vehicle Category`). |
+| `--year` | `2025` | Calendar year to scrape. |
+| `--out` | `data` | Output directory where CSVs are saved. |
 
-**Output files:**
-
-| File | Contents |
-|---|---|
-| `data/vehicle_class_by_fuel.csv` | Vehicle class × fuel type counts per state (273,852 rows) |
-| `data/vehicle_class_by_norms.csv` | Vehicle class × emission norm counts per state (205,801 rows) |
-| `data/vehicle_class_by_year.csv` | Vehicle class × year counts per state |
-
----
-
-### `scrape_makers.py` — brand registrations
-
-Scrapes maker/manufacturer-wise vehicle registration counts via XLSX download from the dashboard.
-
-```bash
-# All India totals, default years (2023–2025)
-.venv/bin/python3 scrape_makers.py --all-india-only
-
-# Specific years
-.venv/bin/python3 scrape_makers.py --all-india-only --years 2025 2024
-
-# Full run — all 37 states × specified years
-.venv/bin/python3 scrape_makers.py --years 2025 2024 2023
-```
-
-| Flag | Description |
-|---|---|
-| `--all-india-only` | Only scrape All India totals, skipping all 35 individual states. Much faster. |
-| `--years` | Space-separated list of years to scrape (default: `2025 2024 2023`). |
-
-**Output files:**
-
-| File | Contents |
-|---|---|
-| `data/maker_registrations.csv` | Maker × year registration counts (~1,457 makers per year) |
-
-**Sample data (top 10 makers, 2025 All India):**
-
-| Maker | Registrations |
-|---|---|
-| HERO MOTOCORP LTD | 492,963 |
-| HONDA MOTORCYCLE AND SCOOTER INDIA | 473,900 |
-| TVS MOTOR COMPANY LTD | 372,751 |
-| BAJAJ AUTO LTD | 241,125 |
-| MARUTI SUZUKI INDIA LTD | 223,289 |
-| ROYAL-ENFIELD (UNIT OF EICHER LTD) | 107,641 |
-| SUZUKI MOTORCYCLE INDIA PVT LTD | 99,286 |
-| MAHINDRA & MAHINDRA LIMITED | 91,361 |
-| HYUNDAI MOTOR INDIA LTD | 66,781 |
-| INDIA YAMAHA MOTOR PVT LTD | 64,549 |
-
----
-
-### `scrape_crosstab.py` — generic tabular combinations
-
-A generalized scraper that can download any Y-axis × X-axis combination from the VAHAN dashboard's Tabular Summary view.
-
-```bash
-# Maker × Fuel (All India, years 2024-2025)
-.venv/bin/python3 scrape_crosstab.py --yaxis Maker --xaxis Fuel --all-india-only --years 2025 2024
-
-# Fuel × Calendar Year (all states)
-.venv/bin/python3 scrape_crosstab.py --yaxis Fuel --xaxis "Calendar Year" --years 2025
-
-# State × Fuel
-.venv/bin/python3 scrape_crosstab.py --yaxis State --xaxis Fuel --all-india-only --years 2025
-
-# Maker × Norms across 3 years
-.venv/bin/python3 scrape_crosstab.py --yaxis Maker --xaxis Norms --years 2025 2024 2023
-```
-
-| Flag | Description |
-|---|---|
-| `--yaxis` | **Required.** Y-axis (rows). Valid options: `Vehicle Category`, `Vehicle Class`, `Norms`, `Fuel`, `Maker`, `State`. |
-| `--xaxis` | **Required.** X-axis (columns). Valid options: `Vehicle Category`, `Norms`, `Fuel`, `Vehicle Category Group`, `Financial Year`, `Calendar Year`, `Month Wise`. |
-| `--all-india-only` | Only scrape All India totals, skipping individual states. |
-| `--years` | Space-separated list of years to scrape (default: `2025 2024 2023`). |
-
-**Output files:**
-
-The script generates a CSV named after the provided Y-axis and X-axis.
-
-| File | Contents |
-|---|---|
-| `data/<yaxis>_by_<xaxis>.csv` | Cross-tabbed counts (e.g. `data/maker_by_fuel.csv`) |
-
+**Key Features:**
+- **Auto-Aggregation**: Automatically iterates through all selected states and combines them into one file.
+- **Data Transformation**: Converts wide-format Vahan exports into a clean long-format with columns: `S No`, `[Y-Axis]`, `State`, `Year`, `Month`, `Value`.
+- **Organized Output**: Files are saved in the `data/` folder with naming pattern `[Y-Axis]_[Year].csv`.
 ---
 
 ## 3. MCP Server
@@ -353,249 +225,106 @@ Restart Claude Desktop after editing the config. The `vahan` tools will appear i
 
 ## 6. MCP Tools Reference
 
-### `get_registrations`
+### `get_vahan_data`
 
-Get year-wise All India vehicle counts for a metric.
+Query vehicle registration data for any category (e.g., `Vehicle Class`, `Fuel`, `Maker`, `Norms`). Supports month-wise details and flexible filtering.
 
-> **Note:** The VAHAN dashboard only exposes All India totals in its year-wise tables. All state codes hold identical All India values. Use `state_code="-1"` for the canonical row.
-
-| Parameter | Type | Default | Description |
+| Parameter | Type | Required | Description |
 |---|---|---|---|
-| `metric` | string | `"registrations"` | One of `registrations`, `transactions`, `revenue`, `permits` |
-| `state_code` | string | *(all)* | Use `"-1"` for All India. Other codes also return All India values. |
-| `year` | string | *(all years)* | Calendar year e.g. `"2025:"`, `"2024:"`, or `"Till Today"` for all-time total |
-| `limit` | integer | `100` | Maximum rows returned |
-
-**Example:**
-```
-get_registrations(metric="registrations", state_code="-1", year="2025:")
-```
+| `category` | string | Yes | e.g. `"Vehicle Class"`, `"Fuel"`, `"Maker"`, `"Norms"` |
+| `item_value` | string | No | Filter by value e.g. `"PETROL"`, `"TATA MOTORS LTD"` |
+| `state` | string | No | State name e.g. `"DELHI"`, `"MAHARASHTRA"` |
+| `year` | string | No | Year e.g. `"2025"`, `"2026"` |
+| `month` | string | No | Month abbreviation e.g. `"JAN"`, `"FEB"` |
+| `limit` | integer | No | Maximum rows (default: 200) |
 
 ---
 
-### `get_vehicle_class_by_fuel`
+### `get_top_items`
 
-Get vehicle class registration counts broken down by fuel type for a state.
+Get top items in a category (e.g., top makers or fuel types) ranked by registration count.
 
-Returns one row per `(vehicle_class, fuel_type)` combination, sorted by count descending.
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `state_code` | string | Yes | — | State code e.g. `"MH"`, `"DL"`. Use `"-1"` for All India. |
-| `fuel_type` | string | No | *(all)* | Filter to one fuel type e.g. `"PETROL"`, `"DIESEL"`, `"PURE EV"`, `"CNG ONLY"`. See `vahan://fuel-types` resource for full list. |
-| `limit` | integer | No | `200` | Maximum rows returned |
-
-**Example:**
-```
-get_vehicle_class_by_fuel(state_code="MH", fuel_type="PURE EV")
-```
-
----
-
-### `get_vehicle_class_by_norms`
-
-Get vehicle class registration counts broken down by emission norm for a state.
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `state_code` | string | Yes | — | State code e.g. `"MH"`. Use `"-1"` for All India. |
-| `norm` | string | No | *(all)* | Filter to one norm e.g. `"BS VI"`, `"BS IV"`, `"BS III"`. Note: use spaces not hyphens. See `vahan://emission-norms` for full list. |
-| `limit` | integer | No | `200` | Maximum rows returned |
-
-**Example:**
-```
-get_vehicle_class_by_norms(state_code="-1", norm="BS VI")
-```
-
----
-
-### `get_yearly_trend`
-
-Get the All India year-wise trend for a metric with growth percentages.
-
-| Parameter | Type | Default | Description |
+| Parameter | Type | Required | Description |
 |---|---|---|---|
-| `metric` | string | `"registrations"` | One of `registrations`, `transactions`, `revenue`, `permits` |
-| `limit` | integer | `20` | Number of years to return (most recent first) |
+| `category` | string | Yes | e.g. `"Maker"`, `"Fuel"`, `"Vehicle Class"` |
+| `state` | string | No | Filter by state name |
+| `year` | string | No | Filter by year e.g. `"2025"` |
+| `limit` | integer | No | Number of top items (default: 20) |
 
-**Example:**
-```
-get_yearly_trend(metric="registrations", limit=10)
-```
+---
+
+### `search_items`
+
+Search for items in a category by name substring (e.g., finding a specific manufacturer).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `category` | string | Yes | e.g. `"Maker"`, `"Vehicle Class"` |
+| `name_contains` | string | Yes | Case-insensitive substring |
+| `state` | string | No | Filter by state name |
+| `year` | string | No | Filter by year |
 
 ---
 
 ### `get_ev_breakdown`
 
-Get electric vehicle (EV) registration breakdown.
-
-Covers four EV fuel types: `PURE EV`, `PLUG-IN HYBRID EV`, `STRONG HYBRID EV`, `ELECTRIC(BOV)`.
+Get electric vehicle (EV) registration breakdown across states, months, or fuel sub-types.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `state_code` | string | *(all states)* | Filter to one state e.g. `"KA"`. Omit for all India. |
-| `group_by` | string | `"state"` | Dimension to aggregate by. One of `state`, `vehicle_class`, `fuel_type`. |
-| `limit` | integer | `50` | Maximum rows returned |
-
-**Examples:**
-```
-# EV registrations ranked by state
-get_ev_breakdown(group_by="state", limit=36)
-
-# EV breakdown by vehicle class in Karnataka
-get_ev_breakdown(state_code="KA", group_by="vehicle_class")
-
-# EV sub-type breakdown (pure EV vs hybrid etc.)
-get_ev_breakdown(group_by="fuel_type")
-```
+| `state` | string | — | Filter by state name |
+| `year` | string | — | Filter by year |
+| `group_by` | string | `"state"` | One of `state`, `month`, `item_value` |
 
 ---
 
 ### `search_rtos`
 
-Look up Regional Transport Offices (RTOs) by state or name.
+Look up Regional Transport Offices (RTOs) by state code or name.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `state_code` | string | *(all states)* | Filter by state code e.g. `"MH"` |
-| `name_contains` | string | *(no filter)* | Case-insensitive substring match on RTO name e.g. `"mumbai"` |
-| `limit` | integer | `50` | Maximum rows returned |
-
-**Examples:**
-```
-search_rtos(state_code="MH")
-search_rtos(name_contains="bangalore")
-search_rtos(state_code="DL", limit=100)
-```
-
----
-
-### `get_top_makers`
-
-Get top vehicle manufacturers/brands ranked by registration count.
-
-Data covers ~1,457 makers across all states and years 2024–2026.
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `state_code` | string | Yes | — | State code e.g. `"MH"`. Use `"-1"` for All India. |
-| `year` | string | No | *(all years)* | Year e.g. `"2025"`. Omit for all years. |
-| `limit` | integer | No | `20` | Number of top makers to return |
-
-**Examples:**
-```
-# Top 10 brands in India for 2025
-get_top_makers(state_code="-1", year="2025", limit=10)
-
-# Top makers in Maharashtra
-get_top_makers(state_code="MH", year="2025")
-```
-
----
-
-### `search_makers`
-
-Search vehicle manufacturers/brands by name substring.
-
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `name_contains` | string | Yes | — | Case-insensitive substring e.g. `"tata"`, `"hero"`, `"suzuki"` |
-| `state_code` | string | No | *(all states)* | Filter by state code |
-| `year` | string | No | *(all years)* | Filter by year e.g. `"2025"` |
-| `limit` | integer | No | `50` | Maximum rows returned |
-
-**Examples:**
-```
-# Find all Tata brands
-search_makers(name_contains="tata")
-
-# Search Hero brands in All India 2025
-search_makers(name_contains="hero", state_code="-1", year="2025")
-```
+| `state_code` | string | — | Filter by state code e.g. `"MH"` |
+| `name_contains` | string | — | Case-insensitive name substring |
 
 ---
 
 ### `run_sql`
 
-Run an arbitrary read-only `SELECT` query directly against the SQLite database.
+Run an arbitrary read-only `SELECT` query against the SQLite database.
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `query` | string | Yes | — | SQL `SELECT` statement. Only `SELECT` is permitted; write operations are blocked. |
-| `limit` | integer | No | `500` | Maximum rows returned |
-
-**Important query notes:**
-- `yearly_metrics.year` uses format `"2025:"` (calendar year with trailing colon) or `"Till Today"`.
-- `norms.norm` uses spaces: `"BS VI"`, `"BS IV"` (not `"BS-VI"`).
-- The `fuel` and `norms` tables store each `(vehicle_class, fuel_type/norm)` row **once per vehicle_group (10 copies)**. Always deduplicate with `MAX(count) GROUP BY (vehicle_class, fuel_type)` or `MAX(count) GROUP BY (vehicle_class, norm)`.
-
-**Example:**
-```sql
-SELECT vehicle_class, MAX(count) AS count
-FROM fuel
-WHERE state_code = '-1' AND fuel_type = 'PURE EV'
-GROUP BY vehicle_class
-ORDER BY count DESC
-LIMIT 20
-```
+**Tables:**
+- `vahan_data(category, item_value, state, year, month, count)`
+- `rtos(state_code, state_name, rto_code, rto_name)`
+- `states(state_code, state_name)`
 
 ---
 
 ## 7. MCP Resources Reference
 
-Resources are read-only reference data, fetched with `resources/read`.
-
 | URI | Name | Description |
 |---|---|---|
-| `vahan://states` | Indian States | All 36 state codes and names |
-| `vahan://vehicle-groups` | Vehicle Groups | 10 vehicle category groups |
-| `vahan://fuel-types` | Fuel Types | All distinct fuel type strings in the dataset |
-| `vahan://emission-norms` | Emission Norms | All distinct emission norm strings in the dataset |
-| `vahan://makers` | Vehicle Makers | All ~1,457 vehicle manufacturer/brand names |
+| `vahan://states` | Indian States | All state codes and names |
+| `vahan://categories` | Data Categories | Available Y-axis variables (Fuel, Maker, etc.) |
+| `vahan://fuel-types` | Fuel Types | List of all fuel type names |
 | `vahan://summary` | Dashboard Summary | Top-level VAHAN dashboard statistics |
 
 ---
 
 ## 8. Database Schema
 
-SQLite database at `db/vahan.db`. Auto-built from CSVs on first server start.
+SQLite database at `db/vahan.db`. Rebuilt from CSVs on server start.
 
 ```sql
--- Year-wise All India metrics
--- Note: all state_code values hold All India totals (VAHAN dashboard limitation)
-CREATE TABLE yearly_metrics (
-    state_code TEXT,
-    state_name TEXT,
-    year       TEXT,   -- e.g. "2025:", "2024:", "Till Today"
-    metric     TEXT,   -- "registrations" | "transactions" | "revenue" | "permits"
-    count      INTEGER,
-    growth_pct REAL,
-    PRIMARY KEY (state_code, year, metric)
+CREATE TABLE vahan_data (
+    category   TEXT,   -- e.g. "Vehicle Class", "Fuel", "Maker", "Norms"
+    item_value TEXT,   -- e.g. "PETROL", "TATA MOTORS LTD"
+    state      TEXT,   -- e.g. "DELHI", "MAHARASHTRA"
+    year       TEXT,   -- e.g. "2025", "2026"
+    month      TEXT,   -- e.g. "JAN", "FEB"
+    count      INTEGER
 );
 
--- Vehicle class × fuel type, per state
--- Each (vehicle_class, fuel_type) row appears 10× (once per vehicle_group) — use MAX(count) GROUP BY to deduplicate
-CREATE TABLE fuel (
-    state_code    TEXT,
-    state_name    TEXT,
-    vehicle_group TEXT,
-    vehicle_class TEXT,
-    fuel_type     TEXT,
-    count         INTEGER
-);
-
--- Vehicle class × emission norm, per state
--- Same 10× duplication as fuel table
-CREATE TABLE norms (
-    state_code    TEXT,
-    state_name    TEXT,
-    vehicle_group TEXT,
-    vehicle_class TEXT,
-    norm          TEXT,   -- e.g. "BS VI", "BS IV" (spaces, not hyphens)
-    count         INTEGER
-);
-
--- Regional Transport Offices
 CREATE TABLE rtos (
     state_code TEXT,
     state_name TEXT,
@@ -603,19 +332,9 @@ CREATE TABLE rtos (
     rto_name   TEXT
 );
 
--- States / Union Territories
 CREATE TABLE states (
     state_code TEXT PRIMARY KEY,
     state_name TEXT
-);
-
--- Maker/brand registrations per state and year
-CREATE TABLE makers (
-    state_code TEXT,
-    state_name TEXT,
-    maker      TEXT,   -- e.g. "HERO MOTOCORP LTD", "MARUTI SUZUKI INDIA LTD"
-    year       TEXT,   -- e.g. "2025" (no trailing colon, unlike yearly_metrics)
-    count      INTEGER
 );
 ```
 
@@ -623,23 +342,14 @@ CREATE TABLE makers (
 
 ## 9. Output Files
 
-All files are written to `data/`.
+All raw scraped data is stored in the `data/` directory.
 
-| File | Rows (approx.) | Description |
-|---|---|---|
-| `registrations.csv` | ~864 | Year-wise All India registrations |
-| `transactions.csv` | ~864 | Year-wise All India transactions |
-| `revenue.csv` | ~864 | Year-wise All India revenue |
-| `permits.csv` | ~864 | Year-wise All India permits |
-| `all_metrics.csv` | ~3,456 | All 4 metrics combined |
-| `states.csv` | 35 | State codes and names |
-| `rto_list.csv` | 1,551 | All RTOs with state code and name |
-| `summary_stats.csv` | 1 | Top-level dashboard stats |
-| `rto_metrics.csv` | varies | Per-RTO year-wise data *(full run only)* |
-| `vehicle_class_by_fuel.csv` | 273,852 | Vehicle class × fuel type per state |
-| `vehicle_class_by_norms.csv` | 205,801 | Vehicle class × emission norm per state |
-| `vehicle_class_by_year.csv` | varies | Vehicle class × year per state |
-| `maker_registrations.csv` | ~1,457/yr | Maker/brand registration counts per year |
+| File | Description |
+|---|---|
+| `data/[Category]_[Year].csv` | Monthly registration data per state |
+| `data/states.csv` | List of state codes and names |
+| `data/rto_list.csv` | List of all RTOs |
+| `data/summary_stats.csv` | Dashboard summary statistics |
 
 ---
 
@@ -647,47 +357,34 @@ All files are written to `data/`.
 
 | Code | State / UT | Code | State / UT |
 |---|---|---|---|
-| `-1` | All India | `MH` | Maharashtra |
-| `AN` | Andaman & Nicobar | `ML` | Meghalaya |
-| `AP` | Andhra Pradesh | `MN` | Manipur |
-| `AR` | Arunachal Pradesh | `MP` | Madhya Pradesh |
-| `AS` | Assam | `MZ` | Mizoram |
-| `BR` | Bihar | `NL` | Nagaland |
-| `CG` | Chhattisgarh | `OR` | Odisha |
-| `CH` | Chandigarh | `PB` | Punjab |
-| `DD` | Dadra & Nagar Haveli and Daman & Diu | `PY` | Puducherry |
-| `DL` | Delhi | `RJ` | Rajasthan |
-| `GA` | Goa | `SK` | Sikkim |
-| `GJ` | Gujarat | `TN` | Tamil Nadu |
-| `HP` | Himachal Pradesh | `TR` | Tripura |
-| `HR` | Haryana | `UK` | Uttarakhand |
-| `JH` | Jharkhand | `UP` | Uttar Pradesh |
-| `JK` | Jammu & Kashmir | `WB` | West Bengal |
-| `KA` | Karnataka | `LA` | Ladakh |
-| `KL` | Kerala | `LD` | Lakshadweep |
+| `AN` | Andaman & Nicobar | `LD` | Lakshadweep |
+| `AP` | Andhra Pradesh | `MH` | Maharashtra |
+| `AR` | Arunachal Pradesh | `ML` | Meghalaya |
+| `AS` | Assam | `MN` | Manipur |
+| `BR` | Bihar | `MP` | Madhya Pradesh |
+| `CG` | Chhattisgarh | `MZ` | Mizoram |
+| `CH` | Chandigarh | `NL` | Nagaland |
+| `DD` | Dadra & Nagar Haveli | `OR` | Odisha |
+| `DL` | Delhi | `PB` | Punjab |
+| `GA` | Goa | `PY` | Puducherry |
+| `GJ` | Gujarat | `RJ` | Rajasthan |
+| `HP` | Himachal Pradesh | `SK` | Sikkim |
+| `HR` | Haryana | `TN` | Tamil Nadu |
+| `JH` | Jharkhand | `TR` | Tripura |
+| `JK` | Jammu & Kashmir | `UK` | Uttarakhand |
+| `KA` | Karnataka | `UP` | Uttar Pradesh |
+| `KL` | Kerala | `WB` | West Bengal |
+| `LA` | Ladakh | | |
 
 ---
 
 ## 11. Data Caveats
 
-**Year-wise data is All India only.**
-The VAHAN dashboard's state selector does not update the year-wise data tables — they always display All India totals regardless of which state is selected. The `yearly_metrics` table stores state codes but all rows contain identical All India values. Use `state_code="-1"` to get the canonical row.
+**All India data is captured as a "state" value.**
+When scraping "All India" totals, the result is stored with state name "All India".
 
-**`fuel` and `norms` tables have 10× row duplication.**
-VAHAN's Tabular Summary cross-tab ignores the vehicle_group selection and returns all vehicle classes for every group. Each `(vehicle_class, fuel_type, count)` combination is stored 10 times (once per vehicle_group). All built-in tools handle this automatically. If writing raw SQL, always use:
-```sql
-MAX(count) GROUP BY vehicle_class, fuel_type   -- for fuel table
-MAX(count) GROUP BY vehicle_class, norm        -- for norms table
-```
+**Clean Data Transformation.**
+Unlike legacy versions, this scraper performs automatic cleaning and transformation to a standardized long format. Numeric counts are cleaned of commas and non-numeric characters during ingestion.
 
-**Year format has a trailing colon.**
-Years are stored as `"2025:"`, `"2024:"` etc. (with a trailing colon, matching the raw VAHAN output). The special value `"Till Today"` is the all-time cumulative total.
-
-**Emission norm values use spaces not hyphens.**
-Use `"BS VI"` and `"BS IV"`, not `"BS-VI"` or `"BS-IV"`.
-
-**20 rows of missing norms data for Ladakh / TRAILER.**
-The VAHAN server returns fallback VCG data instead of norms for Ladakh's TRAILER category. These 20 rows (0.01% of the norms table) are a server-side limitation and cannot be resolved by re-scraping.
-
-**Maker data is aggregate per year (not month-wise).**
-The XLSX download from the Vahan dashboard provides total registration counts per maker per year. Month-wise and fuel-wise breakdowns are not available in the download export. The data covers all vehicle categories combined (not split by vehicle group).
+**High Performance Querying.**
+The unified `vahan_data` table is indexed by category, state, and year for fast retrieval of trends and rankings.
