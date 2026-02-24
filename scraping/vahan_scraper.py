@@ -48,13 +48,14 @@ def get_all_states(page):
     Returns a list of all state names from the PrimeFaces dropdown.
     """
     print("Fetching list of all states...")
-    label_selector = "label#j_idt36_label"
+    label_selector = "label#j_idt41_label"
     page.wait_for_selector(label_selector)
     page.click(label_selector)
     time.sleep(1)
     
     # Get all li items in the panel
-    states = page.locator("li[id^='j_idt36_']").all_inner_texts()
+    # The panel ID usually matches the dropdown ID (j_idt41)
+    states = page.locator("li[id^='j_idt41_']").all_inner_texts()
     
     # Close the dropdown by clicking somewhere else or the label again
     page.click("body")
@@ -65,7 +66,7 @@ def get_all_states(page):
     print(f"Found {len(states)} states.")
     return states
 
-def scrape_vahan(states_to_scrape, y_axes, year, output_dir):
+def scrape_vahan(states_to_scrape, x_axes, y_axes, year, output_dir):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
@@ -83,133 +84,197 @@ def scrape_vahan(states_to_scrape, y_axes, year, output_dir):
             else:
                 states_to_scrape = all_states
 
-        # 1. Selection logic for shared options
-        # Select X-Axis (Hardcoded to Month Wise)
-        select_primefaces_dropdown(page, "label#xaxisVar_label", "Month Wise")
-        # Select Year
+        # Select Year (Global for all axes)
         select_primefaces_dropdown(page, "label#selectedYear_label", str(year))
 
-        for y_axis in y_axes:
-            print(f"\n==========================================")
-            print(f"PROCESSING Y-AXIS: {y_axis}")
-            print(f"==========================================")
+        for x_axis in x_axes:
+            print(f"\n##########################################")
+            print(f"USING X-AXIS: {x_axis}")
+            print(f"##########################################")
             
-            # Select Y-Axis
-            select_primefaces_dropdown(page, "label#yaxisVar_label", y_axis)
+            # Select X-Axis
+            select_primefaces_dropdown(page, "label#xaxisVar_label", x_axis)
             
-            consolidated_df = pd.DataFrame()
-            safe_y_axis = y_axis.replace("/", "_").replace(" ", "_")
-            csv_path = os.path.join(output_dir, f"{safe_y_axis}_{year}.csv")
-
-            for state in states_to_scrape:
-                print(f"\n--- State: {state} ---")
+            for y_axis in y_axes:
+                if y_axis == x_axis:
+                    print(f"Skipping combination where Y-Axis == X-Axis ({y_axis})")
+                    continue
+                    
+                print(f"\n==========================================")
+                print(f"PROCESSING Y-AXIS: {y_axis}")
+                print(f"==========================================")
                 
-                try:
-                    # Select State
-                    select_primefaces_dropdown(page, "label#j_idt36_label", state)
+                # Select Y-Axis
+                select_primefaces_dropdown(page, "label#yaxisVar_label", y_axis)
 
-                    # Refresh
-                    print("Clicking Refresh...")
-                    page.click("button#j_idt73")
+                for state in states_to_scrape:
+                    print(f"\n--- State: {state} ---")
                     
-                    page.wait_for_load_state("networkidle")
-                    time.sleep(5)  # Buffer for AJAX table update
+                    try:
+                        # Select State
+                        select_primefaces_dropdown(page, "label#j_idt41_label", state)
 
-                    # Download xlsx
-                    print(f"Attempting to download XLSX for {state}...")
-                    
-                    # The ID of the Excel download button can be dynamic based on the view.
-                    download_selectors = ["a[id='groupingTable:xls']", "a[id='vchgroupTable:xls']"]
-                    
-                    download_element = None
-                    for selector in download_selectors:
-                        if page.locator(selector).count() > 0:
-                            download_element = selector
-                            break
-                    
-                    if not download_element:
-                        print(f"Warning: Excel download button not found. Waiting longer...")
-                        time.sleep(3)
+                        # Refresh
+                        print("Clicking Refresh...")
+                        page.click("button#j_idt72")
+                        
+                        page.wait_for_load_state("networkidle")
+                        time.sleep(5)  # Buffer for AJAX table update
+
+                        # Download xlsx
+                        print(f"Attempting to download XLSX for {state}...")
+                        
+                        # The ID of the Excel download button can be dynamic based on the view.
+                        download_selectors = ["a[id='groupingTable:xls']", "a[id='vchgroupTable:xls']"]
+                        
+                        download_element = None
                         for selector in download_selectors:
                             if page.locator(selector).count() > 0:
                                 download_element = selector
                                 break
-
-                    if download_element:
-                        with page.expect_download(timeout=30000) as download_info:
-                            page.click(download_element)
-                        download = download_info.value
                         
-                        # Save temp file
-                        temp_xlsx = os.path.join(output_dir, f"temp_{int(time.time())}.xlsx")
-                        download.save_as(temp_xlsx)
+                        if not download_element:
+                            print(f"Warning: Excel download button not found. Waiting longer...")
+                            time.sleep(3)
+                            for selector in download_selectors:
+                                if page.locator(selector).count() > 0:
+                                    download_element = selector
+                                    break
 
-                        # Process Excel
-                        df = pd.read_excel(temp_xlsx, header=None)
-                        os.remove(temp_xlsx) # Cleanup temp
-                        
-                        if len(df) > 4:
-                            # Construct headers
-                            row1 = df.iloc[1].fillna("").astype(str).tolist()
-                            row3 = df.iloc[3].fillna("").astype(str).tolist()
+                        if download_element:
+                            with page.expect_download(timeout=30000) as download_info:
+                                page.click(download_element)
+                            download = download_info.value
                             
-                            headers = []
-                            for i in range(len(row1)):
-                                r1 = row1[i].strip()
-                                r3 = row3[i].strip()
-                                if "Unnamed" in r1 or not r1:
-                                    h = r3 if r3 else f"Col_{i}"
-                                else:
-                                    h = r1 if not r3 else f"{r1}_{r3}"
-                                headers.append(h)
+                            # Save temp file
+                            temp_xlsx = os.path.join(output_dir, f"temp_{int(time.time())}.xlsx")
+                            download.save_as(temp_xlsx)
+
+                            # Process Excel
+                            df = pd.read_excel(temp_xlsx, header=None)
+                            os.remove(temp_xlsx) # Cleanup temp
                             
-                            df_cleaned = df.iloc[4:].copy()
-                            df_cleaned.columns = headers
-                            df_cleaned = df_cleaned.dropna(how="all", axis=0)
-                            
-                            # Transform to Long Format
-                            y_axis_col_name = headers[1]
-                            month_cols = [h for h in headers if h in ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"] or "Month Wise_" in h]
-                            
-                            df_cleaned.columns = [h.replace("Month Wise_", "") for h in df_cleaned.columns]
-                            month_cols = [h.replace("Month Wise_", "") for h in month_cols]
-                            
-                            df_long = df_cleaned.melt(
-                                id_vars=["S No", y_axis_col_name],
-                                value_vars=month_cols,
-                                var_name="Month",
-                                value_name="Value"
-                            )
-                            
-                            df_long["State"] = state
-                            df_long["Year"] = str(year)
-                            
-                            # S No, [Y-Axis], State, Year, Month, Value
-                            final_cols = ["S No", y_axis_col_name, "State", "Year", "Month", "Value"]
-                            df_long = df_long[final_cols]
-                            
-                            consolidated_df = pd.concat([consolidated_df, df_long], ignore_index=True)
-                            print(f"Added {len(df_long)} rows for {state}")
+                            if len(df) > 4:
+                                # Construct headers by combining Row 1, 2, and 3 (indices 1, 2, 3)
+                                # This handles 2-level or 3-level headers commonly found in Vahan exports
+                                rows = [
+                                    df.iloc[1].fillna("").astype(str).tolist(),
+                                    df.iloc[2].fillna("").astype(str).tolist(),
+                                    df.iloc[3].fillna("").astype(str).tolist()
+                                ]
+                                
+                                headers = []
+                                for i in range(len(rows[0])):
+                                    # Combine non-empty, unique values from all header rows for this column
+                                    parts = []
+                                    for r in rows:
+                                        val = r[i].strip()
+                                        if val and not val.startswith("Unnamed") and val not in parts:
+                                            parts.append(val)
+                                    
+                                    if not parts:
+                                        headers.append(f"Col_{i}")
+                                    else:
+                                        headers.append("_".join(parts))
+                                
+                                df_cleaned = df.iloc[4:].copy()
+                                df_cleaned.columns = headers
+                                df_cleaned = df_cleaned.dropna(how="all", axis=0)
+                                
+                                print(f"Raw headers: {headers}")
+                                
+                                # X-axis columns are everything except S-No, Y-Axis, and Total columns
+                                # We'll use a more robust way: columns from index 2 until the first Total column
+                                total_patterns = ["TOTAL", "GRAND TOTAL", "TOTAL_TOTAL"]
+                                total_index = len(headers)
+                                for i, h in enumerate(headers):
+                                    if i > 1 and any(tp in h.upper() for tp in total_patterns):
+                                        total_index = i
+                                        break
+                                
+                                # Clean up headers
+                                # We want to strip the X-Axis name or any common dashboard prefixes
+                                prefixes_to_strip = [
+                                    f"{x_axis}_", f"{x_axis.upper()}_", 
+                                    "Month Wise_", "Vehicle Category Group_",
+                                    "Fuel_", "Maker_", "Norms_", "Vehicle Class_", "Vehicle Category_",
+                                    "FOUR WHEELER_", "TWO WHEELER_", "THREE WHEELER_" # Add common grouping prefixes
+                                ]
+                                
+                                cleaned_headers = []
+                                for h in headers:
+                                    ch = h
+                                    # Strip all matching prefixes recursively if needed
+                                    modified = True
+                                    while modified:
+                                        modified = False
+                                        for pref in prefixes_to_strip:
+                                            if ch.startswith(pref):
+                                                ch = ch.replace(pref, "", 1)
+                                                modified = True
+                                                break
+                                    cleaned_headers.append(ch)
+                                
+                                df_cleaned.columns = cleaned_headers
+                                
+                                # Re-identify cols after cleaning
+                                s_col_clean = cleaned_headers[0]
+                                y_col_clean = cleaned_headers[1]
+                                x_cols_clean = cleaned_headers[2:total_index]
+                                
+                                # Filter out placeholder headers if they don't contain data
+                                # But be careful not to filter out valid categories
+                                x_cols_clean = [c for c in x_cols_clean if not c.startswith("Col_")]
+                                
+                                print(f"Cleaned X-Axis columns: {x_cols_clean}")
+                                
+                                df_long = df_cleaned.melt(
+                                    id_vars=[s_col_clean, y_col_clean],
+                                    value_vars=x_cols_clean,
+                                    var_name=x_axis,
+                                    value_name="Value"
+                                )
+                                
+                                df_long["State"] = state
+                                df_long["Year"] = str(year)
+                                
+                                # Naming scheme: [xaxis]_[yaxis]_[state]_[year].csv
+                                def sanitize(text):
+                                    return "".join(c if c.isalnum() else "_" for c in text).strip("_")
+
+                                safe_x = sanitize(x_axis)
+                                safe_y = sanitize(y_axis)
+                                safe_state = sanitize(state)
+                                
+                                csv_filename = f"{safe_x}_{safe_y}_{safe_state}_{year}.csv"
+                                csv_path = os.path.join(output_dir, csv_filename)
+
+                                # S No, [Y-Axis], State, Year, [X-Axis], Value
+                                # Map back to consistent names if possible
+                                df_long = df_long[[s_col_clean, y_col_clean, "State", "Year", x_axis, "Value"]]
+                                
+                                df_long.to_csv(csv_path, index=False)
+                                print(f"+++ SUCCESSFULLY SAVED: {csv_path} ({len(df_long)} rows) +++")
+                            else:
+                                print(f"Warning: No data found for {state}")
                         else:
-                            print(f"Warning: No data found for {state}")
-                    else:
-                        print(f"Error: Could not find download button for {state}")
-                        
-                except Exception as e:
-                    print(f"Failed to process state {state}: {e}")
-
-            # Save consolidated CSV for this Y-Axis
-            if not consolidated_df.empty:
-                consolidated_df.to_csv(csv_path, index=False)
-                print(f"\n+++ SUCCESSFULLY SAVED CONSOLIDATED CSV: {csv_path} +++")
+                            print(f"Error: Could not find download button for {state}")
+                            
+                    except Exception as e:
+                        print(f"Failed to process state {state}: {e}")
 
         browser.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vahan Dashboard Scraper")
+    parser.add_argument("--year", required=True, help="Year (e.g., '2025', '2024')")
     parser.add_argument("--state", nargs="+", default=None, help="State names (e.g., 'DELHI', 'HARYANA'). If omitted, scrapes all states.")
-    parser.add_argument("--yaxis", nargs="+", default=["Vehicle Class"], help="One or more Y-Axis variables")
-    parser.add_argument("--year", default="2025", help="Year (e.g., '2025', '2024')")
+    parser.add_argument("--xaxis", nargs="+", 
+                        default=["Month Wise", "Fuel", "Norms", "Vehicle Category", "Vehicle Class"], 
+                        help="One or more X-Axis variables")
+    parser.add_argument("--yaxis", nargs="+", 
+                        default=["Vehicle Class", "Maker", "Fuel", "Norms", "Vehicle Category"], 
+                        help="One or more Y-Axis variables")
     parser.add_argument("--out", default="data", help="Output directory")
 
     args = parser.parse_args()
@@ -218,4 +283,4 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         
-    scrape_vahan(args.state, args.yaxis, args.year, output_dir)
+    scrape_vahan(args.state, args.xaxis, args.yaxis, args.year, output_dir)

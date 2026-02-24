@@ -51,18 +51,28 @@ The project uses a unified Playwright-based scraper to collect data from the [VA
 
 ### `vahan_scraper.py` — Multi-axis Scraper
 
-This script handles navigation, dropdown selections, and automatic conversion of XLSX exports into long-format CSVs. It supports iterating through all Indian states for a given Y-axis variable and year.
+### Scraper Usage
+
+The unified scraper supports flexible extraction with broad defaults. **`--year` is the only mandatory parameter.**
 
 ```bash
-# Basic usage — defaults to All States, Vehicle Class, 2025
-.venv/bin/python scraping/vahan_scraper.py
+# Full extraction (Broad defaults: Multiple X/Y combinations, all states)
+.venv/bin/python scraping/vahan_scraper.py --year 2025
 
-# Specify specific states and years
-.venv/bin/python scraping/vahan_scraper.py --state "DELHI" "MAHARASHTRA" --year "2024"
-
-# Scrape Multiple Y-axis variables
-.venv/bin/python scraping/vahan_scraper.py --yaxis "Vehicle Class" "Maker" "Fuel" "Vehicle Category" "Norms" "State" --year "2026"
+# Targeted extraction: Maker x Fuel breakdown for specific states
+.venv/bin/python scraping/vahan_scraper.py \
+  --year 2025 \
+  --state "DELHI" "HARYANA" \
+  --xaxis "Fuel" \
+  --yaxis "Maker"
 ```
+
+**Naming Scheme**: Generated files follow the pattern `data/[xaxis]_[yaxis]_[state]_[year].csv`.
+
+**Defaults for maximum coverage (if omitted)**:
+- **X-Axis**: `Month Wise`, `Fuel`, `Norms`, `Vehicle Category`, `Vehicle Class`
+- **Y-Axis**: `Vehicle Class`, `Maker`, `Fuel`, `Norms`, `Vehicle Category`
+- **States**: All Indian States/UTs
 
 | Flag | Default | Description |
 |---|---|---|
