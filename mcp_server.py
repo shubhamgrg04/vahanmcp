@@ -20,12 +20,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Resource, TextContent, Tool
 import mcp.types as types
 
-# Optional Turso support
-try:
-    import libsql
-    HAS_LIBSQL = True
-except ImportError:
-    HAS_LIBSQL = False
+import mcp.types as types
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -146,27 +141,20 @@ def _ingest_lookup(con: sqlite3.Connection, table: str, filename: str):
             print(f"Error ingesting {filename}: {e}")
 
 def open_db():
-    """Connect to DB (Local SQLite or Turso) and ensure data is synced."""
+    """Connect to local SQLite and ensure data is synced."""
     global DB
     
     # If already initialized, just return
     if DB is not None:
         return DB
         
-    url   = os.getenv("TURSO_DATABASE_URL")
-    token = os.getenv("TURSO_AUTH_TOKEN")
-    
     try:
-        if url and HAS_LIBSQL:
-            print(f"Connecting to Turso: {url}")
-            con = libsql.connect(url, auth_token=token)
-        else:
-            print(f"Connecting to local SQLite: {DB_PATH}")
-            con = sqlite3.connect(DB_PATH, check_same_thread=False)
-            con.row_factory = sqlite3.Row
-            # WAL mode and foreign keys are for local SQLite only
-            con.execute("PRAGMA journal_mode=WAL")
-            con.execute("PRAGMA foreign_keys=ON")
+        print(f"Connecting to local SQLite: {DB_PATH}")
+        con = sqlite3.connect(DB_PATH, check_same_thread=False)
+        con.row_factory = sqlite3.Row
+            
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA foreign_keys=ON")
         
         print("Synchronizing data...")
         ingest(con)
@@ -175,7 +163,6 @@ def open_db():
         return con
     except Exception as e:
         print(f"DATABASE INITIALIZATION ERROR: {e}")
-        # On Render, we might want to fail fast if we can't connect to our primary DB
         raise
 
 

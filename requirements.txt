@@ -4,4 +4,3 @@ openpyxl
 mcp
 uvicorn
 starlette
-libsql
