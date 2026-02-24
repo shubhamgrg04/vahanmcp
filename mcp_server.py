@@ -164,9 +164,9 @@ def open_db():
             print(f"Connecting to local SQLite: {DB_PATH}")
             con = sqlite3.connect(DB_PATH, check_same_thread=False)
             con.row_factory = sqlite3.Row
-            
-        con.execute("PRAGMA journal_mode=WAL")
-        con.execute("PRAGMA foreign_keys=ON")
+            # WAL mode and foreign keys are for local SQLite only
+            con.execute("PRAGMA journal_mode=WAL")
+            con.execute("PRAGMA foreign_keys=ON")
         
         print("Synchronizing data...")
         ingest(con)
