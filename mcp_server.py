@@ -148,26 +148,38 @@ def _ingest_lookup(con: sqlite3.Connection, table: str, filename: str):
 def open_db():
     """Connect to DB (Local SQLite or Turso) and ensure data is synced."""
     global DB
+    
+    # If already initialized, just return
+    if DB is not None:
+        return DB
+        
     url   = os.getenv("TURSO_DATABASE_URL")
     token = os.getenv("TURSO_AUTH_TOKEN")
     
-    if url and HAS_LIBSQL:
-        print(f"Connecting to Turso: {url}")
-        con = libsql.connect(url, auth_token=token)
-    else:
-        print(f"Connecting to local SQLite: {DB_PATH}")
-        con = sqlite3.connect(DB_PATH, check_same_thread=False)
-        con.row_factory = sqlite3.Row
+    try:
+        if url and HAS_LIBSQL:
+            print(f"Connecting to Turso: {url}")
+            con = libsql.connect(url, auth_token=token)
+        else:
+            print(f"Connecting to local SQLite: {DB_PATH}")
+            con = sqlite3.connect(DB_PATH, check_same_thread=False)
+            con.row_factory = sqlite3.Row
+            
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA foreign_keys=ON")
         
-    con.execute("PRAGMA journal_mode=WAL")
-    con.execute("PRAGMA foreign_keys=ON")
-    ingest(con)
-    DB = con
-    return con
+        print("Synchronizing data...")
+        ingest(con)
+        DB = con
+        print("Database initialized successfully.")
+        return con
+    except Exception as e:
+        print(f"DATABASE INITIALIZATION ERROR: {e}")
+        # On Render, we might want to fail fast if we can't connect to our primary DB
+        raise
 
 
-# Initialize DB globally
-DB = open_db()
+# Note: DB is now initialized in the main blocks below
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -530,6 +542,14 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
+
+    # Pre-initialize DB before starting transport
+    try:
+        open_db()
+    except Exception as e:
+        print(f"Failed to initialize database: {e}")
+        import sys
+        sys.exit(1)
 
     if args.transport == "http":
         asyncio.run(run_http(args.host, args.port))
