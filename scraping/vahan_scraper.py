@@ -107,6 +107,9 @@ def scrape_vahan(states_to_scrape, x_axes, y_axes, year, output_dir):
                 # Select Y-Axis
                 select_primefaces_dropdown(page, "label#yaxisVar_label", y_axis)
 
+                # List to hold data for all states for this X/Y combination
+                all_axes_data = []
+
                 for state in states_to_scrape:
                     print(f"\n--- State: {state} ---")
                     
@@ -155,36 +158,26 @@ def scrape_vahan(states_to_scrape, x_axes, y_axes, year, output_dir):
                             os.remove(temp_xlsx) # Cleanup temp
                             
                             if len(df) > 4:
-                                # Construct headers by combining Row 1, 2, and 3 (indices 1, 2, 3)
-                                # This handles 2-level or 3-level headers commonly found in Vahan exports
+                                # ... (Header construction logic same as before) ...
                                 rows = [
                                     df.iloc[1].fillna("").astype(str).tolist(),
                                     df.iloc[2].fillna("").astype(str).tolist(),
                                     df.iloc[3].fillna("").astype(str).tolist()
                                 ]
-                                
                                 headers = []
                                 for i in range(len(rows[0])):
-                                    # Combine non-empty, unique values from all header rows for this column
                                     parts = []
                                     for r in rows:
                                         val = r[i].strip()
                                         if val and not val.startswith("Unnamed") and val not in parts:
                                             parts.append(val)
-                                    
-                                    if not parts:
-                                        headers.append(f"Col_{i}")
-                                    else:
-                                        headers.append("_".join(parts))
+                                    if not parts: headers.append(f"Col_{i}")
+                                    else: headers.append("_".join(parts))
                                 
                                 df_cleaned = df.iloc[4:].copy()
                                 df_cleaned.columns = headers
                                 df_cleaned = df_cleaned.dropna(how="all", axis=0)
                                 
-                                print(f"Raw headers: {headers}")
-                                
-                                # X-axis columns are everything except S-No, Y-Axis, and Total columns
-                                # We'll use a more robust way: columns from index 2 until the first Total column
                                 total_patterns = ["TOTAL", "GRAND TOTAL", "TOTAL_TOTAL"]
                                 total_index = len(headers)
                                 for i, h in enumerate(headers):
@@ -192,19 +185,15 @@ def scrape_vahan(states_to_scrape, x_axes, y_axes, year, output_dir):
                                         total_index = i
                                         break
                                 
-                                # Clean up headers
-                                # We want to strip the X-Axis name or any common dashboard prefixes
                                 prefixes_to_strip = [
                                     f"{x_axis}_", f"{x_axis.upper()}_", 
                                     "Month Wise_", "Vehicle Category Group_",
                                     "Fuel_", "Maker_", "Norms_", "Vehicle Class_", "Vehicle Category_",
-                                    "FOUR WHEELER_", "TWO WHEELER_", "THREE WHEELER_" # Add common grouping prefixes
+                                    "FOUR WHEELER_", "TWO WHEELER_", "THREE WHEELER_"
                                 ]
-                                
                                 cleaned_headers = []
                                 for h in headers:
                                     ch = h
-                                    # Strip all matching prefixes recursively if needed
                                     modified = True
                                     while modified:
                                         modified = False
@@ -216,17 +205,8 @@ def scrape_vahan(states_to_scrape, x_axes, y_axes, year, output_dir):
                                     cleaned_headers.append(ch)
                                 
                                 df_cleaned.columns = cleaned_headers
-                                
-                                # Re-identify cols after cleaning
-                                s_col_clean = cleaned_headers[0]
-                                y_col_clean = cleaned_headers[1]
-                                x_cols_clean = cleaned_headers[2:total_index]
-                                
-                                # Filter out placeholder headers if they don't contain data
-                                # But be careful not to filter out valid categories
-                                x_cols_clean = [c for c in x_cols_clean if not c.startswith("Col_")]
-                                
-                                print(f"Cleaned X-Axis columns: {x_cols_clean}")
+                                s_col_clean, y_col_clean = cleaned_headers[0], cleaned_headers[1]
+                                x_cols_clean = [c for c in cleaned_headers[2:total_index] if not c.startswith("Col_")]
                                 
                                 df_long = df_cleaned.melt(
                                     id_vars=[s_col_clean, y_col_clean],
@@ -234,27 +214,13 @@ def scrape_vahan(states_to_scrape, x_axes, y_axes, year, output_dir):
                                     var_name=x_axis,
                                     value_name="Value"
                                 )
-                                
                                 df_long["State"] = state
                                 df_long["Year"] = str(year)
                                 
-                                # Naming scheme: [xaxis]_[yaxis]_[state]_[year].csv
-                                def sanitize(text):
-                                    return "".join(c if c.isalnum() else "_" for c in text).strip("_")
-
-                                safe_x = sanitize(x_axis)
-                                safe_y = sanitize(y_axis)
-                                safe_state = sanitize(state)
-                                
-                                csv_filename = f"{safe_x}_{safe_y}_{safe_state}_{year}.csv"
-                                csv_path = os.path.join(output_dir, csv_filename)
-
-                                # S No, [Y-Axis], State, Year, [X-Axis], Value
-                                # Map back to consistent names if possible
+                                # Reorder columns
                                 df_long = df_long[[s_col_clean, y_col_clean, "State", "Year", x_axis, "Value"]]
-                                
-                                df_long.to_csv(csv_path, index=False)
-                                print(f"+++ SUCCESSFULLY SAVED: {csv_path} ({len(df_long)} rows) +++")
+                                all_axes_data.append(df_long)
+                                print(f"--- Collected {len(df_long)} rows for {state} ---")
                             else:
                                 print(f"Warning: No data found for {state}")
                         else:
@@ -262,6 +228,21 @@ def scrape_vahan(states_to_scrape, x_axes, y_axes, year, output_dir):
                             
                     except Exception as e:
                         print(f"Failed to process state {state}: {e}")
+
+                # After all states are processed for this X/Y pair, save one file
+                if all_axes_data:
+                    final_df = pd.concat(all_axes_data, ignore_index=True)
+                    
+                    def sanitize(text):
+                        return "".join(c if c.isalnum() else "_" for c in text).strip("_")
+
+                    safe_x = sanitize(x_axis)
+                    safe_y = sanitize(y_axis)
+                    csv_filename = f"{safe_x}_{safe_y}_{year}.csv"
+                    csv_path = os.path.join(output_dir, csv_filename)
+                    
+                    final_df.to_csv(csv_path, index=False)
+                    print(f"\n+++ SUCCESSFULLY SAVED CONSOLIDATED FILE: {csv_path} ({len(final_df)} total rows) +++")
 
         browser.close()
 

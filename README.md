@@ -49,11 +49,13 @@ python3 -m venv .venv
 
 The project uses a unified Playwright-based scraper to collect data from the [VAHAN Dashboard](https://vahan.parivahan.gov.in/vahan4dashboard/).
 
-### `vahan_scraper.py` — Multi-axis Scraper
+### `vahan_scraper.py` — Unified Scraper
+
+The project uses a unified Playwright-based scraper to collect data from the [VAHAN Dashboard](https://vahan.parivahan.gov.in/vahan4dashboard/). It automates selection, extraction, and consolidation of multi-dimensional registration data.
 
 ### Scraper Usage
 
-The unified scraper supports flexible extraction with broad defaults. **`--year` is the only mandatory parameter.**
+**`--year` is the only mandatory parameter.** By default, the scraper iterates through multiple X/Y axis combinations and all Indian states.
 
 ```bash
 # Full extraction (Broad defaults: Multiple X/Y combinations, all states)
@@ -67,24 +69,20 @@ The unified scraper supports flexible extraction with broad defaults. **`--year`
   --yaxis "Maker"
 ```
 
-**Naming Scheme**: Generated files follow the pattern `data/[xaxis]_[yaxis]_[state]_[year].csv`.
-
-**Defaults for maximum coverage (if omitted)**:
-- **X-Axis**: `Month Wise`, `Fuel`, `Norms`, `Vehicle Category`, `Vehicle Class`
-- **Y-Axis**: `Vehicle Class`, `Maker`, `Fuel`, `Norms`, `Vehicle Category`
-- **States**: All Indian States/UTs
+**Naming Scheme**: Generated files follow the pattern `data/[xaxis]_[yaxis]_[year].csv` (e.g., `data/Fuel_Maker_2025.csv`). Each file contains consolidated registration data across all states.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--state` | `ALL` | List of states to scrape. If `ALL` or omitted, it fetches all ~36 available states. |
-| `--yaxis` | `["Vehicle Class"]` | One or more Y-Axis variables to scrape (e.g., `Fuel`, `Maker`, `Vehicle Category`). |
-| `--year` | `2025` | Calendar year to scrape. |
+| `--year` | (Required) | Calendar year to scrape. |
+| `--state` | `ALL` | List of states to scrape. Fetches all ~36 states if omitted. |
+| `--xaxis` | `["Month Wise", "Fuel", "Norms"]` | One or more X-Axis variables to scrape. |
+| `--yaxis` | `["Vehicle Class", "Maker", "Fuel"]` | One or more Y-Axis variables to scrape. |
 | `--out` | `data` | Output directory where CSVs are saved. |
 
 **Key Features:**
-- **Auto-Aggregation**: Automatically iterates through all selected states and combines them into one file.
-- **Data Transformation**: Converts wide-format Vahan exports into a clean long-format with columns: `S No`, `[Y-Axis]`, `State`, `Year`, `Month`, `Value`.
-- **Organized Output**: Files are saved in the `data/` folder with naming pattern `[Y-Axis]_[Year].csv`.
+- **Auto-Aggregation**: Automatically iterates through all selected states and combines them into one consolidated file per X/Y/Year combination.
+- **Generic Data Schema**: Supports flexible X and Y axis selections (Maker, Fuel, Norms, Vehicle Class, etc.).
+- **Data Transformation**: Converts wide-format Vahan exports into standardized long-format CSVs.
 ---
 
 ## 3. MCP Server
@@ -235,56 +233,58 @@ Restart Claude Desktop after editing the config. The `vahan` tools will appear i
 
 ## 6. MCP Tools Reference
 
-### `get_vahan_data`
+### `get_vahan_metrics`
 
-Query vehicle registration data for any category (e.g., `Vehicle Class`, `Fuel`, `Maker`, `Norms`). Supports month-wise details and flexible filtering.
+Flexible tool to fetch vehicle registration counts across any combination of dimensions (e.g., Maker, Fuel, Norms, Vehicle Class).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `category` | string | Yes | e.g. `"Vehicle Class"`, `"Fuel"`, `"Maker"`, `"Norms"` |
-| `item_value` | string | No | Filter by value e.g. `"PETROL"`, `"TATA MOTORS LTD"` |
-| `state` | string | No | State name e.g. `"DELHI"`, `"MAHARASHTRA"` |
-| `year` | string | No | Year e.g. `"2025"`, `"2026"` |
-| `month` | string | No | Month abbreviation e.g. `"JAN"`, `"FEB"` |
-| `limit` | integer | No | Maximum rows (default: 200) |
+| `yaxis_name` | string | No | e.g., `"Maker"`, `"Vehicle Class"` |
+| `yaxis_value` | string | No | Filter by value e.g., `"MARUTI SUZUKI"` |
+| `xaxis_name` | string | No | e.g., `"Fuel"`, `"Month Wise"` |
+| `xaxis_value` | string | No | Filter by value e.g., `"PETROL"`, `"JAN"` |
+| `state` | string | No | Filter by state name |
+| `year` | integer | No | Calendar year |
+| `limit` | integer | No | Maximum rows (default: 500) |
 
 ---
 
-### `get_top_items`
+### `get_top_performers`
 
-Get top items in a category (e.g., top makers or fuel types) ranked by registration count.
+Identify top values in a dimension (e.g., top makers or fuel types) ranked by registration volume.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `category` | string | Yes | e.g. `"Maker"`, `"Fuel"`, `"Vehicle Class"` |
+| `dimension_name`| string | Yes | Dimension to rank (e.g., `"Maker"`) |
+| `filter_dim` | string | No | Optional dimension to filter by (e.g., `"Fuel"`) |
+| `filter_val` | string | No | Optional value for filter (e.g., `"ELECTRIC(BOV)"`) |
 | `state` | string | No | Filter by state name |
-| `year` | string | No | Filter by year e.g. `"2025"` |
+| `year` | integer | No | Filter by year |
 | `limit` | integer | No | Number of top items (default: 20) |
 
 ---
 
-### `search_items`
+### `search_dimension_values`
 
-Search for items in a category by name substring (e.g., finding a specific manufacturer).
+Search for specific values within a dimension by name substring (e.g., finding a specific manufacturer).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `category` | string | Yes | e.g. `"Maker"`, `"Vehicle Class"` |
+| `dimension_name` | string | Yes | e.g. `"Maker"`, `"Vehicle Class"` |
 | `name_contains` | string | Yes | Case-insensitive substring |
-| `state` | string | No | Filter by state name |
-| `year` | string | No | Filter by year |
+| `limit` | integer | No | Maximum matches |
 
 ---
 
-### `get_ev_breakdown`
+### `get_ev_stats`
 
-Get electric vehicle (EV) registration breakdown across states, months, or fuel sub-types.
+Dedicated analysis for Electric Vehicle (EV) registration adoption trends.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `state` | string | — | Filter by state name |
-| `year` | string | — | Filter by year |
-| `group_by` | string | `"state"` | One of `state`, `month`, `item_value` |
+| `year` | integer | — | Filter by year |
+| `group_by` | string | `"state"` | One of `state`, `xaxis_value`, `yaxis_value` |
 
 ---
 
@@ -304,7 +304,7 @@ Look up Regional Transport Offices (RTOs) by state code or name.
 Run an arbitrary read-only `SELECT` query against the SQLite database.
 
 **Tables:**
-- `vahan_data(category, item_value, state, year, month, count)`
+- `vahan_data(yaxis_name, yaxis_value, xaxis_name, xaxis_value, state, year, count)`
 - `rtos(state_code, state_name, rto_code, rto_name)`
 - `states(state_code, state_name)`
 
@@ -315,24 +315,30 @@ Run an arbitrary read-only `SELECT` query against the SQLite database.
 | URI | Name | Description |
 |---|---|---|
 | `vahan://states` | Indian States | All state codes and names |
-| `vahan://categories` | Data Categories | Available Y-axis variables (Fuel, Maker, etc.) |
-| `vahan://fuel-types` | Fuel Types | List of all fuel type names |
+| `vahan://dimensions` | Available Dimensions | List of available X and Y axis variables globally |
 | `vahan://summary` | Dashboard Summary | Top-level VAHAN dashboard statistics |
 
 ---
 
 ## 8. Database Schema
 
-SQLite database at `db/vahan.db`. Rebuilt from CSVs on server start.
+SQLite database at `db/vahan.db`. Automatically synced from CSVs in `data/` on server start using a tracking log.
 
 ```sql
 CREATE TABLE vahan_data (
-    category   TEXT,   -- e.g. "Vehicle Class", "Fuel", "Maker", "Norms"
-    item_value TEXT,   -- e.g. "PETROL", "TATA MOTORS LTD"
-    state      TEXT,   -- e.g. "DELHI", "MAHARASHTRA"
-    year       TEXT,   -- e.g. "2025", "2026"
-    month      TEXT,   -- e.g. "JAN", "FEB"
-    count      INTEGER
+    yaxis_name  TEXT,    -- e.g. "Maker", "Vehicle Class"
+    yaxis_value TEXT,    -- e.g. "TATA MOTORS LTD"
+    xaxis_name  TEXT,    -- e.g. "Fuel", "Month Wise"
+    xaxis_value TEXT,    -- e.g. "PETROL", "JAN"
+    state       TEXT,    -- e.g. "DELHI"
+    year        INTEGER, -- e.g. 2025
+    count       INTEGER
+);
+
+CREATE TABLE ingestion_log (
+    filename      TEXT PRIMARY KEY,
+    last_modified REAL,
+    ingested_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE rtos (
