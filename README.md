@@ -15,7 +15,7 @@ Scrape India's national vehicle registration database ([VAHAN Dashboard](https:/
 1. [Setup](#1-setup)
 2. [Scraping](#2-scraping)
 3. [MCP Server](#3-mcp-server)
-4. [Hosting with Cloudflared](#4-hosting-with-cloudflared)
+4. [Hosting (Direct Domain)](#4-hosting-direct-domain)
 5. [Connecting Claude Desktop](#5-connecting-claude-desktop)
 6. [MCP Tools Reference](#6-mcp-tools-reference)
 7. [MCP Resources Reference](#7-mcp-resources-reference)
@@ -23,13 +23,13 @@ Scrape India's national vehicle registration database ([VAHAN Dashboard](https:/
 9. [Output Files](#9-output-files)
 10. [State Codes](#10-state-codes)
 11. [Data Caveats](#11-data-caveats)
-12. [Deployment (Digital Ocean)](#12-deployment-digital-ocean)
+12. [Deployment (Custom Domain & SSL)](#12-deployment-custom-domain--ssl)
 
 ---
 
 ## 1. Setup
 
-**Requirements:** Python 3.11+, Node.js (for `mcp-remote` / Claude Desktop), Homebrew (macOS, for cloudflared)
+**Requirements:** Python 3.11+, Node.js (for `mcp-remote` / Claude Desktop)
 
 ```bash
 # Clone / enter the project directory
@@ -118,7 +118,7 @@ Runs a Streamable HTTP server. MCP endpoint: `http://<host>:<port>/mcp`
 # Bind to all interfaces (public VPS)
 .venv/bin/python3 mcp_server.py --transport http
 
-# Bind to localhost only (behind a reverse proxy or cloudflared)
+# Bind to localhost only (behind a reverse proxy)
 .venv/bin/python3 mcp_server.py --transport http --host 127.0.0.1
 
 # Custom port
@@ -126,73 +126,14 @@ Runs a Streamable HTTP server. MCP endpoint: `http://<host>:<port>/mcp`
 ```
 
 ---
+## 4. Hosting (Direct Domain)
 
-## 4. Hosting with Cloudflared
+The server is configured to run behind an **Nginx** reverse proxy on a custom domain (`vahanmcp.shubhamgrg.com`).
 
-[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/) exposes the local HTTP server to the public internet without opening firewall ports.
+- **Reverse Proxy**: Nginx listens on port 80/443 and forwards traffic to `127.0.0.1:8000`.
+- **SSL**: Automated via **Certbot** (Let's Encrypt).
 
-**Install cloudflared (macOS):**
-```bash
-brew install cloudflared
-```
-
-The convenience script `start.sh` starts both the MCP server and the tunnel together.
-
-### Quick tunnel (no account)
-
-No login required. Gives a random `*.trycloudflare.com` URL — valid until the process stops.
-
-```bash
-./start.sh
-```
-
-Example output:
-```
-Starting VAHAN MCP server on http://127.0.0.1:8000/mcp ...
-MCP server running (PID 12345)
-Starting quick tunnel (no login required) ...
-
-+-----------------------------------------------------------------------------------+
-|  Your quick Tunnel has been created! Visit it at:                                 |
-|  https://male-steve-surgeons-airline.trycloudflare.com                            |
-+-----------------------------------------------------------------------------------+
-```
-
-> The URL changes every time. For a stable URL use a named tunnel.
-
-### Named tunnel (stable URL)
-
-One-time setup (requires a [Cloudflare account](https://dash.cloudflare.com/sign-up)):
-
-```bash
-# 1. Log in (opens browser)
-cloudflared tunnel login
-
-# 2. Create the tunnel (run once — saves credentials to ~/.cloudflared/)
-cloudflared tunnel create vahan
-
-# 3. Optional: route a custom domain
-cloudflared tunnel route dns vahan mcp.yourdomain.com
-```
-
-Then start with:
-```bash
-./start.sh --named vahan
-```
-
-`start.sh` auto-generates `~/.cloudflared/vahan.yml` on first run:
-```yaml
-tunnel: vahan
-credentials-file: ~/.cloudflared/vahan.json
-
-ingress:
-  - service: http://localhost:8000
-```
-
-| `start.sh` flag | Description |
-|---|---|
-| *(none)* | Quick tunnel — random `trycloudflare.com` URL, no login needed. |
-| `--named <name>` | Named tunnel — stable URL tied to your Cloudflare account. Requires prior `cloudflared tunnel login` + `create`. |
+This project includes `vahan-mcp.nginx` and an automated `deploy.sh` script to handle the configuration.
 
 ---
 
@@ -406,39 +347,34 @@ Unlike legacy versions, this scraper performs automatic cleaning and transformat
 **High Performance Querying.**
 The unified `vahan_data` table is indexed by category, state, and year for fast retrieval of trends and rankings.
 ---
-## 12. Deployment (Digital Ocean)
+## 12. Deployment (Custom Domain & SSL)
 
-The project includes built-in automation for deployment to a Digital Ocean droplet using GitHub Actions and Systemd.
+The project includes built-in automation for deployment to a Digital Ocean droplet using GitHub Actions, Nginx, and Certbot.
 
 ### Droplet Setup (One-time)
 
-1. **Authorize GitHub SSH Key**: Add your GitHub Action's public SSH key to `/root/.ssh/authorized_keys` on your droplet.
-2. **Setup Folder**: The automation expects the project to live at `/root/vahandata`.
-3. **Trigger Initial Deploy**: Push to the `main` branch of your GitHub repository.
+1. **DNS Setup**: Point `vahanmcp.shubhamgrg.com` (A record) to your droplet's IP address.
+2. **Authorize GitHub SSH Key**: Add your GitHub Action's public SSH key to `/root/.ssh/authorized_keys` on your droplet.
+3. **Setup Folder**: The automation expects the project to live at `/root/vahandata`.
+4. **Initial Deploy**: Push to the `main` branch.
 
 ### GitHub Actions (CI/CD)
 
-Continuous Deployment is handled by `.github/workflows/deploy.yml`. It automatically:
-- Clones the repository to your droplet (if missing).
-- Installs system dependencies (`python3-venv`).
-- Sets up the Python virtual environment.
-- Configures and starts the `vahan-mcp` systemd service.
+The `.github/workflows/deploy.yml` workflow automatically:
+- Clones/Pulls the code to `/root/vahandata`.
+- Installs `python3-venv`, `nginx`, and `certbot` if missing.
+- Sets up the Python virtual environment and dependencies.
+- Configures **Nginx** and handles **SSL (Certbot)** for `vahanmcp.shubhamgrg.com`.
+- Manages the `vahan-mcp` background service.
 
-**Required GitHub Secrets:**
-- `DO_HOST`: Your droplet's IP address.
-- `DO_SSH_KEY`: Your private SSH key.
-
-### Service Management
-
-Once deployed, the MCP server runs as a background service. You can manage it on the droplet using:
+### Service & Proxy Management
 
 ```bash
-# Check service status
+# Monitor the MCP Server
 systemctl status vahan-mcp
-
-# Restart manually
-systemctl restart vahan-mcp
-
-# View logs
 journalctl -u vahan-mcp -f
+
+# Manage Nginx
+systemctl status nginx
+nginx -t
 ```

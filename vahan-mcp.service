@@ -5,7 +5,7 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/root/vahandata
-ExecStart=/root/vahandata/.venv/bin/python mcp_server.py --transport http --host 0.0.0.0 --port 8000
+ExecStart=/root/vahandata/.venv/bin/python mcp_server.py --transport http --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
 Environment=PYTHONPATH=.
