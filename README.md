@@ -23,6 +23,7 @@ Scrape India's national vehicle registration database ([VAHAN Dashboard](https:/
 9. [Output Files](#9-output-files)
 10. [State Codes](#10-state-codes)
 11. [Data Caveats](#11-data-caveats)
+12. [Deployment (Digital Ocean)](#12-deployment-digital-ocean)
 
 ---
 
@@ -404,3 +405,40 @@ Unlike legacy versions, this scraper performs automatic cleaning and transformat
 
 **High Performance Querying.**
 The unified `vahan_data` table is indexed by category, state, and year for fast retrieval of trends and rankings.
+---
+## 12. Deployment (Digital Ocean)
+
+The project includes built-in automation for deployment to a Digital Ocean droplet using GitHub Actions and Systemd.
+
+### Droplet Setup (One-time)
+
+1. **Authorize GitHub SSH Key**: Add your GitHub Action's public SSH key to `/root/.ssh/authorized_keys` on your droplet.
+2. **Setup Folder**: The automation expects the project to live at `/root/vahandata`.
+3. **Trigger Initial Deploy**: Push to the `main` branch of your GitHub repository.
+
+### GitHub Actions (CI/CD)
+
+Continuous Deployment is handled by `.github/workflows/deploy.yml`. It automatically:
+- Clones the repository to your droplet (if missing).
+- Installs system dependencies (`python3-venv`).
+- Sets up the Python virtual environment.
+- Configures and starts the `vahan-mcp` systemd service.
+
+**Required GitHub Secrets:**
+- `DO_HOST`: Your droplet's IP address.
+- `DO_SSH_KEY`: Your private SSH key.
+
+### Service Management
+
+Once deployed, the MCP server runs as a background service. You can manage it on the droplet using:
+
+```bash
+# Check service status
+systemctl status vahan-mcp
+
+# Restart manually
+systemctl restart vahan-mcp
+
+# View logs
+journalctl -u vahan-mcp -f
+```
