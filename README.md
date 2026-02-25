@@ -4,9 +4,10 @@ Scrape India's national vehicle registration database ([VAHAN Dashboard](https:/
 
 **Data coverage**
 - 36 states / union territories (including All India)
-- Consolidated registration data by **Fuel**, **Maker**, **Vehicle Class**, **Category**, and **Norms**
-- Month-wise and state-wise granularity
-- Data available for years 2024–2026 (customizable via scraper)
+- Available for combimations of X-Y axes (year and state level data)
+- Available X-Y axes are: 
+  - X-axis: Fuel, Maker, Vehicle Class, Vehicle Category Group, Norms, Month Wise
+  - Y-axis: Fuel, Maker, Vehicle Class, Vehicle Category Group, Norms
 
 ---
 
@@ -80,10 +81,6 @@ The project uses a unified Playwright-based scraper to collect data from the [VA
 | `--yaxis` | `["Vehicle Class", "Maker", "Fuel"]` | One or more Y-Axis variables to scrape. |
 | `--out` | `data` | Output directory where CSVs are saved. |
 
-**Key Features:**
-- **Auto-Aggregation**: Automatically iterates through all selected states and combines them into one consolidated file per X/Y/Year combination.
-- **Generic Data Schema**: Supports flexible X and Y axis selections (Maker, Fuel, Norms, Vehicle Class, etc.).
-- **Data Transformation**: Converts wide-format Vahan exports into standardized long-format CSVs.
 ---
 
 ## 3. MCP Server
@@ -126,7 +123,7 @@ Runs a Streamable HTTP server. MCP endpoint: `http://<host>:<port>/mcp`
 ```
 
 ---
-## 4. Hosting (Direct Domain)
+## 4. Hosting
 
 The server is configured to run behind an **Nginx** reverse proxy on a custom domain (`vahanmcp.shubhamgrg.com`).
 
@@ -161,15 +158,11 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`.
   "mcpServers": {
     "vahan": {
       "command": "npx",
-      "args": ["mcp-remote", "https://your-tunnel-url.trycloudflare.com/mcp"]
+      "args": ["mcp-remote", "https://vahanmcp.shubhamgrg.com/mcp"]
     }
   }
 }
 ```
-
-> `mcp-remote` is a client-side bridge that lets Claude Desktop (stdio-only) connect to remote Streamable HTTP MCP servers. It requires Node.js / npx.
-
-Restart Claude Desktop after editing the config. The `vahan` tools will appear in the tool picker.
 
 ---
 
@@ -378,3 +371,7 @@ journalctl -u vahan-mcp -f
 systemctl status nginx
 nginx -t
 ```
+
+> Automated scraping through github actions don't work as vahan website blocks traffic from github actions. So you need to run the scraper manually.
+
+
