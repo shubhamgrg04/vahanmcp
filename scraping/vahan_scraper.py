@@ -48,16 +48,26 @@ def get_all_states(page):
     Returns a list of all state names from the PrimeFaces dropdown.
     """
     print("Fetching list of all states...")
-    label_selector = "label#j_idt41_label"
-    page.wait_for_selector(label_selector)
+    # The State dropdown label ID can change. Try to find it by text or common IDs.
+    label_selectors = ["label#j_idt45_label", "label#j_idt41_label", "label:has-text('Select State')"]
+    label_selector = None
+    for selector in label_selectors:
+        if page.locator(selector).count() > 0:
+            label_selector = selector
+            break
+    
+    if not label_selector:
+        print("Error: Could not find State dropdown label.")
+        return []
+
     page.click(label_selector)
     time.sleep(1)
     
-    # Get all li items in the panel
-    # The panel ID usually matches the dropdown ID (j_idt41)
-    states = page.locator("li[id^='j_idt41_']").all_inner_texts()
+    # Get all li items in the panel. The panel ID usually ends with _items.
+    # We can search for li items that are visible and in a PrimeFaces list.
+    states = page.locator("li.ui-selectonemenu-item").all_inner_texts()
     
-    # Close the dropdown by clicking somewhere else or the label again
+    # Close the dropdown
     page.click("body")
     time.sleep(0.5)
     
@@ -66,15 +76,36 @@ def get_all_states(page):
     print(f"Found {len(states)} states.")
     return states
 
+def goto_with_retry(page, url, timeout=60000, max_retries=3):
+    """
+    Navigates to a URL with retry logic and exponential backoff.
+    """
+    for attempt in range(max_retries):
+        try:
+            print(f"Navigating to {url} (Attempt {attempt + 1}/{max_retries})...")
+            page.goto(url, timeout=timeout)
+            page.wait_for_load_state("networkidle", timeout=timeout)
+            print("Successfully reached dashboard.")
+            return True
+        except Exception as e:
+            print(f"Navigation attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                wait_time = (2 ** attempt) * 5
+                print(f"Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                print("Max retries reached. Navigation failed.")
+                raise e
+    return False
+
 def scrape_vahan(states_to_scrape, x_axes, y_axes, year, output_dir):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
 
-        print("Navigating to Vahan Dashboard...")
-        page.goto("https://vahan.parivahan.gov.in/vahan4dashboard/vahan/view/reportview.xhtml", timeout=60000)
-        page.wait_for_load_state("networkidle")
+        print("Starting Vahan Dashboard session...")
+        goto_with_retry(page, "https://vahan.parivahan.gov.in/vahan4dashboard/vahan/view/reportview.xhtml", timeout=90000)
 
         # If no states provided, fetch all from dropdown
         if not states_to_scrape or "ALL" in [s.upper() for s in states_to_scrape]:
@@ -114,12 +145,36 @@ def scrape_vahan(states_to_scrape, x_axes, y_axes, year, output_dir):
                     print(f"\n--- State: {state} ---")
                     
                     try:
-                        # Select State
-                        select_primefaces_dropdown(page, "label#j_idt41_label", state)
+                        # Select State - Use a more robust way to find the state dropdown
+                        # It's usually the label associated with "State:"
+                        state_label_selectors = ["label#j_idt45_label", "label#j_idt41_label", "div:has-text('State:') + div label"]
+                        
+                        selected_selector = None
+                        for selector in state_label_selectors:
+                            if page.locator(selector).count() > 0:
+                                selected_selector = selector
+                                break
+                        
+                        if selected_selector:
+                            select_primefaces_dropdown(page, selected_selector, state)
+                        else:
+                            print(f"Warning: Could not find State dropdown for {state}")
+                            continue
 
-                        # Refresh
+                        # Refresh - use text-based selector for robustness
                         print("Clicking Refresh...")
-                        page.click("button#j_idt72")
+                        refresh_button_selectors = ["button#j_idt75", "button#j_idt72", "button:has-text('Refresh')"]
+                        refresh_selector = None
+                        for selector in refresh_button_selectors:
+                            if page.locator(selector).count() > 0:
+                                refresh_selector = selector
+                                break
+                        
+                        if refresh_selector:
+                            page.click(refresh_selector)
+                        else:
+                            print(f"Error: Could not find Refresh button for {state}")
+                            continue
                         
                         page.wait_for_load_state("networkidle")
                         time.sleep(5)  # Buffer for AJAX table update
